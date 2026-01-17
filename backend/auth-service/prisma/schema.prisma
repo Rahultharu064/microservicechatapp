@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"        // or "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  passwordHash  String?       // null for OAuth users
+  provider      AuthProvider  @default(EMAIL)
+  status        UserStatus    @default(ACTIVE)
+
+  isEmailVerified Boolean     @default(false)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@index([email])
+}
+
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  token      String   @unique
+  userId     String
+  isRevoked  Boolean  @default(false)
+  expiresAt  DateTime
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+
+model LoginAudit {
+  id        String   @id @default(uuid())
+  userId    String?
+  email     String
+  ip        String
+  success   Boolean
+
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([ip])
+}
