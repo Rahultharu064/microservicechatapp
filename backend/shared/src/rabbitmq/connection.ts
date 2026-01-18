@@ -5,21 +5,16 @@ let channel: amqp.Channel;
 export const createConnectRabbitMQ = async (): Promise<amqp.Channel> => {
     if (channel) return channel;
     try{
-        const connection = await amqp.connect({
-            protocol: "amqp",
-            hostname: process.env.RABBITMQ_HOST || "localhost",
-            port: parseInt(process.env.RABBITMQ_PORT || "5672"),
-            username: process.env.RABBITMQ_USER || "admin",
-            password: process.env.RABBITMQ_PASSWORD || "admin123",
-        });
-        logger.info("❤️RabbitMQ connected successfully");     
+        const url = process.env.RABBITMQ_URL || `amqp://${process.env.RABBITMQ_USER || "admin"}:${process.env.RABBITMQ_PASSWORD || "admin123"}@${process.env.RABBITMQ_HOST || "localhost"}:${process.env.RABBITMQ_PORT || "5672"}`;
+        const connection = await amqp.connect(url);
+        logger.info("❤️RabbitMQ connected successfully");
         return (channel = await connection.createChannel());
     }
     catch (error) {
         logger.error("😒RabbitMQ connection error", error);
         throw error;
     }
- 
+
 };
 
 
