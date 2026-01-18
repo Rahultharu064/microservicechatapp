@@ -12,4 +12,5 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 app.use("/auth", authRoutes);
 
+
 export default app;

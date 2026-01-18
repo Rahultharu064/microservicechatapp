@@ -4,7 +4,7 @@ import logger from "../logger/logger.js";
 let channel: amqp.Channel;
 export const createConnectRabbitMQ = async (): Promise<amqp.Channel> => {
     if (channel) return channel;
-    try{
+    try {
         const url = process.env.RABBITMQ_URL || `amqp://${process.env.RABBITMQ_USER || "admin"}:${process.env.RABBITMQ_PASSWORD || "admin123"}@${process.env.RABBITMQ_HOST || "localhost"}:${process.env.RABBITMQ_PORT || "5672"}`;
         const connection = await amqp.connect(url);
         logger.info("❤️RabbitMQ connected successfully");
