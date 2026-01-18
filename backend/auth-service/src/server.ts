@@ -1,8 +1,8 @@
 import "dotenv/config";
 import app from "./app.js";
-import redisClient, { connectRedis } from "../../shared/dist/redis/client.js";
-import { createConnectRabbitMQ } from "../../shared/dist/rabbitmq/connection.js";
-import logger from "../../shared/src/logger/logger.js";
+import redisClient, { connectRedis } from "../../shared/src/redis/client.ts";
+import { createConnectRabbitMQ } from "../../shared/src/rabbitmq/connection.ts";
+import logger from "../../shared/src/logger/logger.ts";
 import prisma from "./config/db.ts";
 const port = process.env.PORT;
 

@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model PrivateMessage {
+  id              String   @id @default(uuid())
+  senderId        String
+  receiverId      String
+  cipherText      String   @db.LongText
+  iv              String
+  senderPublicKey String
+  burnAfterRead   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([senderId, receiverId])
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model GroupMember {
+  id                String   @id @default(uuid())
+  groupId           String
+  userId            String
+  encryptedGroupKey String   @db.LongText
+  keyVersion        Int
+  createdAt         DateTime @default(now())
+
+  @@unique([groupId, userId])
+}
+
+model GroupMessage {
+  id         String   @id @default(uuid())
+  groupId    String
+  senderId   String
+  cipherText String   @db.LongText
+  iv         String
+  keyVersion Int
+  createdAt  DateTime @default(now())
+}
+
+model EncryptedFile {
+  id         String   @id @default(uuid())
+  uploaderId String
+  filePath   String
+  mimeType   String
+  fileSize   Int
+  createdAt  DateTime @default(now())
+}
+
