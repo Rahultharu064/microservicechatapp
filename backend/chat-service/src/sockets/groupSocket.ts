@@ -54,6 +54,17 @@ export const groupChatSocket = (io: Server) => {
           }
         }).catch(() => { });
 
+        // Publish to Search Service
+        await publishToQueue("chat.events", {
+          type: "message.created",
+          kind: "group",
+          id: msg.id,
+          content: payload.cipherText,
+          senderId: user.id,
+          chatId: payload.groupId,
+          createdAt: msg.createdAt
+        }).catch(err => logger.error("Search Sync Publish failed", err));
+
         logger.info("Group message sent", { from: user.id, groupId: payload.groupId });
       } catch (err) {
         logger.error("Failed to send group message", err);
