@@ -4,14 +4,14 @@ import { SearchService } from "../services/searchService.ts";
 
 export const searchController = async (req: Request, res: Response) => {
     try {
-        const { q, type, limit = 20, offset = 0, startDate, endDate, hasMedia } = searchSchema.parse(req.query);
+        const { q, type, limit = 20, offset = 0, startDate, endDate, hasMedia, senderId } = searchSchema.parse(req.query);
         const userId = (req as any).headers["x-user-id"] || (req as any).user?.id || "unknown"; // Assuming middleware populates user or gateway passes header
 
         let results;
 
         switch (type) {
             case "message":
-                results = await SearchService.searchMessages(q, limit, offset, userId, { startDate, endDate, hasMedia });
+                results = await SearchService.searchMessages(q, limit, offset, userId, { startDate, endDate, hasMedia, senderId });
                 break;
             case "user":
                 results = await SearchService.searchUsers(q, limit, offset);

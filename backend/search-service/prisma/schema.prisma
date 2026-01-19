@@ -34,7 +34,17 @@ model ChatMessage {
 
   sender    User     @relation(fields: [senderId], references: [id])
 
+  type      MessageType @default(TEXT)
+  
   @@index([content])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
 }
 
 model Group {

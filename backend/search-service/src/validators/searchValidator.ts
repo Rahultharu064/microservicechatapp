@@ -8,4 +8,5 @@ export const searchSchema = z.object({
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
     hasMedia: z.enum(["true", "false"]).transform((val) => val === "true").optional(),
+    senderId: z.string().optional(),
 });

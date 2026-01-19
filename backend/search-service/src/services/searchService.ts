@@ -9,7 +9,7 @@ export class SearchService {
         limit: number,
         offset: number,
         userId: string,
-        filters?: { startDate?: Date | undefined; endDate?: Date | undefined; hasMedia?: boolean | undefined }
+        filters?: { startDate?: Date | undefined; endDate?: Date | undefined; hasMedia?: boolean | undefined; senderId?: string | undefined }
     ) {
         const filterKey = JSON.stringify(filters || {});
         const key = `search:messages:${userId}:${q}:${limit}:${offset}:${filterKey}`;
@@ -30,6 +30,17 @@ export class SearchService {
                             .then((members) => members.map((m) => m.groupId)),
                     },
                 },
+                // Search public channels
+                {
+                    chatId: {
+                        in: await prismaClient.channel
+                            .findMany({
+                                where: { isPublic: true },
+                                select: { id: true }
+                            })
+                            .then(channels => channels.map(c => c.id))
+                    }
+                }
             ],
         };
 
@@ -39,16 +50,35 @@ export class SearchService {
         if (filters?.endDate) {
             where.createdAt = { ...where.createdAt, lte: filters.endDate };
         }
+        if (filters?.senderId) {
+            where.senderId = filters.senderId;
+        }
+        if (filters?.hasMedia) {
+            where.type = { not: "TEXT" };
+        }
 
-        const data = await prismaClient.chatMessage.findMany({
-            where,
-            take: limit,
-            skip: offset,
-            orderBy: { createdAt: "desc" },
-        });
+        const [data, total] = await Promise.all([
+            prismaClient.chatMessage.findMany({
+                where,
+                take: limit,
+                skip: offset,
+                orderBy: { createdAt: "desc" },
+                include: { sender: { select: { username: true, email: true } } }
+            }),
+            prismaClient.chatMessage.count({ where })
+        ]);
 
-        await redisClient.set(key, JSON.stringify(data), { EX: CACHE_TTL });
-        return data;
+        const result = {
+            data,
+            meta: {
+                total,
+                page: Math.floor(offset / limit) + 1,
+                limit
+            }
+        };
+
+        await redisClient.set(key, JSON.stringify(result), { EX: CACHE_TTL });
+        return result;
     }
 
     static async searchUsers(q: string, limit: number, offset: number) {
