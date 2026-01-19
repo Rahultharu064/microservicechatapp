@@ -80,3 +80,18 @@ model EncryptedFile {
   createdAt  DateTime @default(now())
 }
 
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  messageType String   // 'private' or 'group'
+  mediaId     String   // Reference to Media Service
+  mediaType   String   // 'image', 'file', 'voice', 'video'
+  mediaUrl    String   // URL to Media Service endpoint
+  thumbnail   String?  // Thumbnail URL for images/videos
+  metadata    String?  @db.Text // JSON metadata (duration for voice, size, etc.)
+  createdAt   DateTime @default(now())
+
+  @@index([messageId])
+  @@index([mediaId])
+}
+
