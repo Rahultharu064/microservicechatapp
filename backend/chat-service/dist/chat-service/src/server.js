@@ -3,7 +3,7 @@ import { connectRedis } from "../../shared/src/redis/client.js";
 import { createConnectRabbitMQ } from "../../shared/src/rabbitmq/connection.js";
 import prisma from "./config/db.js";
 import logger from "../../shared/src/logger/logger.js";
-const PORT = process.env.PORT || 3004;
+const PORT = process.env.CHAT_PORT || 5004;
 const startServer = async () => {
     try {
         // Database check

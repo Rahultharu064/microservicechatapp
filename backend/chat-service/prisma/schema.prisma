@@ -13,15 +13,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
 model PrivateMessage {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   senderId        String
   receiverId      String
-  cipherText      String   @db.LongText
+  cipherText      String        @db.LongText
   iv              String
   senderPublicKey String
-  burnAfterRead   Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  burnAfterRead   Boolean       @default(false)
+  status          MessageStatus @default(SENT)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([senderId, receiverId])
 }
@@ -51,6 +59,16 @@ model GroupMessage {
   iv         String
   keyVersion Int
   createdAt  DateTime @default(now())
+}
+
+model MessageReceipt {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  status    MessageStatus @default(READ)
+  readAt    DateTime @default(now())
+
+  @@unique([messageId, userId])
 }
 
 model EncryptedFile {

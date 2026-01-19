@@ -42,4 +42,42 @@ export const getGroupMessages = async (req, res) => {
         res.status(500).json({ error: "Internal server error" });
     }
 };
+export const syncMessages = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { lastSync } = req.query;
+        if (!lastSync) {
+            return res.status(400).json({ error: "lastSync timestamp is required" });
+        }
+        const syncDate = new Date(lastSync);
+        const privateMessages = await prisma.privateMessage.findMany({
+            where: {
+                receiverId: userId,
+                createdAt: { gt: syncDate },
+            },
+            orderBy: { createdAt: "asc" },
+        });
+        res.json({ privateMessages });
+    }
+    catch (err) {
+        logger.error("Failed to sync messages", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+export const getUnreadCount = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const count = await prisma.privateMessage.count({
+            where: {
+                receiverId: userId,
+                status: { not: "READ" }
+            }
+        });
+        res.json({ unreadCount: count });
+    }
+    catch (err) {
+        logger.error("Failed to get unread count", err);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
 //# sourceMappingURL=messageController.js.map

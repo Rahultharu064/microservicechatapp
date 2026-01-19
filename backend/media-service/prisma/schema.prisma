@@ -1,0 +1,45 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+
+
+model Media {
+  id           String   @id @default(uuid())
+  ownerId      String
+  filename     String
+  mimeType     String
+  size         Int
+  storagePath  String
+  encryptedKey String
+  iv           String
+  isInfected   Boolean  @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  thumbnails   Thumbnail[]
+}
+
+model Thumbnail {
+  id        String @id @default(uuid())
+  mediaId  String
+  size     String
+  path     String
+
+  media    Media @relation(fields: [mediaId], references: [id])
+}
+

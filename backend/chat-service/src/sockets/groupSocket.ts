@@ -41,13 +41,18 @@ export const groupChatSocket = (io: Server) => {
         // Broadcast to group (including sender)
         io.to(`group:${payload.groupId}`).emit("group:message:receive", msg);
 
-        // Publish to RabbitMQ
+        // Publish to RabbitMQ for Notifications
         await publishToQueue("chat.message.sent", {
           messageId: msg.id,
           type: "group",
           groupId: payload.groupId,
           senderId: user.id,
-        });
+          timestamp: msg.createdAt,
+          notification: {
+            title: "New Group Message",
+            body: `New message in group ${payload.groupId}`,
+          }
+        }).catch(() => { });
 
         logger.info("Group message sent", { from: user.id, groupId: payload.groupId });
       } catch (err) {

@@ -42,7 +42,7 @@ export const privateChatSocket = (io: Server) => {
     // Handle private message
     socket.on("message:send", async (payload: PrivateMessagePayload) => {
       try {
-        const message = await prisma.privateMessage.create({
+        const message = await (prisma.privateMessage as any).create({
           data: {
             senderId: user.id,
             receiverId: payload.to,
@@ -50,22 +50,40 @@ export const privateChatSocket = (io: Server) => {
             iv: payload.iv,
             senderPublicKey: payload.senderPublicKey,
             burnAfterRead: payload.burnAfterRead ?? false,
+            status: "SENT",
           },
         });
 
         // Relay to recipient
-        io.to(payload.to).emit("message:receive", message);
+        const recipientSocket = io.to(payload.to);
+        recipientSocket.emit("message:receive", message);
 
-        // Notify sender as ack (optional, but good for UI)
-        socket.emit("message:sent", { messageId: message.id, status: "delivered" });
+        // Notify sender as ack
+        socket.emit("message:sent", { messageId: message.id, status: "SENT" });
 
-        // Publish to RabbitMQ for other services (notifications, search)
+        // Check if recipient is online for immediate "DELIVERED" status
+        const isOnline = await redisClient.get(`user:presence:${payload.to}`);
+        if (isOnline === "online") {
+          await (prisma.privateMessage as any).update({
+            where: { id: message.id },
+            data: { status: "DELIVERED" }
+          });
+          io.to(user.id).emit("message:status", { messageId: message.id, status: "DELIVERED" });
+        }
+
+        // Publish to RabbitMQ for Notifications & Analytics
         await publishToQueue("chat.message.sent", {
           messageId: message.id,
           type: "private",
           senderId: user.id,
           receiverId: payload.to,
-        });
+          timestamp: message.createdAt,
+          // For push notifications, we only send a generic notification since it's E2EE
+          notification: {
+            title: "New Message",
+            body: "You have a new encrypted message",
+          }
+        }).catch(err => logger.error("RabbitMQ Publish failed", err));
 
         logger.info("Private message sent", { from: user.id, to: payload.to });
       } catch (err) {
@@ -85,8 +103,22 @@ export const privateChatSocket = (io: Server) => {
 
     // Handle read receipts
     socket.on("message:read", async (payload: { messageId: string, from: string }) => {
-      // Typically update DB here if needed, or just relay
-      io.to(payload.from).emit("message:read", { messageId: payload.messageId, readerId: user.id });
+      try {
+        await (prisma.privateMessage as any).update({
+          where: { id: payload.messageId },
+          data: { status: "READ" }
+        });
+        io.to(payload.from).emit("message:status", { messageId: payload.messageId, status: "READ", readerId: user.id });
+
+        // Also notify via RabbitMQ that message was read
+        await publishToQueue("chat.message.read", {
+          messageId: payload.messageId,
+          readerId: user.id,
+          senderId: payload.from
+        }).catch(() => { });
+      } catch (err) {
+        logger.error("Failed to update read status", err);
+      }
     });
 
     socket.on("disconnect", async () => {
