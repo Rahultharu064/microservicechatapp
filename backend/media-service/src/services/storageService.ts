@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
-const MEDIA_DIR = "storage/media";
+const BASE_DIR = "storage";
+const MEDIA_DIR = path.join(BASE_DIR, "media");
 
 export const saveFile = async (
   filename: string,
@@ -16,22 +17,22 @@ export const saveFile = async (
 export const readFile = async (filePath: string) => {
   return fs.readFile(filePath);
 };
+
 export const deleteFile = async (filePath: string) => {
-  return fs.unlink(filePath);
+  if (await fileExists(filePath)) {
+    await fs.unlink(filePath);
+  }
 };
+
 export const fileExists = async (filePath: string) => {
   try {
     await fs.access(filePath);
     return true;
   } catch {
     return false;
-  }     
+  }
 };
-export const listFiles = async () => {
-  await fs.mkdir(MEDIA_DIR, { recursive: true });
-  return fs.readdir(MEDIA_DIR);
-};
+
 export const getFilePath = (filename: string) => {
   return path.join(MEDIA_DIR, filename);
 };
-
