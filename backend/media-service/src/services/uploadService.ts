@@ -19,11 +19,14 @@ export const handleUpload = async (
   const buffer = await fs.readFile(file.path);
 
   // Encryption
-  const encryptionKey = randomBytes(32);
-  const { encrypted, iv } = encryptBuffer(buffer, encryptionKey);
+ const encryptionKey = randomBytes(32);
+const { encrypted, iv } = encryptBuffer(buffer, encryptionKey);
 
-  // Storage
-  const storagePath = await saveFile(file.filename, encrypted);
+// Convert iv to string (HEX)
+const ivHex = Buffer.from(iv).toString("hex");
+
+ // Storage
+const storagePath = await saveFile(file.filename, encrypted);
 
   // Database Entry
   const media = await prismaClient.media.create({
@@ -34,7 +37,7 @@ export const handleUpload = async (
       size: file.size,
       storagePath,
       encryptedKey: encryptionKey.toString("hex"),
-      iv: iv,
+      iv: ivHex,  
     },
   });
 
