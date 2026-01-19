@@ -5,27 +5,25 @@
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["../shared/src/*"]
+      "@shared/*": [
+        "../shared/src/*"
+      ]
     },
-
     // Rest of config...
     "module": "NodeNext",
     "target": "es2020",
     "types": [],
-
-    "noEmit": true,
+    "noEmit": false,
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
-
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "jsx": "react-jsx",
     "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",

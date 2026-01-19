@@ -1,19 +1,29 @@
-import type{ Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import logger from "../../../shared/src/logger/logger.js";
 
-export const authMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "Unauthorized" });
+export const authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
-    (req as any).user = decoded;
-    next();
-  } catch {
-    res.status(401).json({ message: "Invalid token" });
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret || !token) {
+      logger.error("JWT_SECRET or Token is missing");
+      return res.sendStatus(500);
+    }
+
+    jwt.verify(token, secret, (err: any, user: any) => {
+      if (err) {
+        logger.error("JWT verification failed", err);
+        return res.sendStatus(403);
+      }
+
+      (req as any).user = user;
+      next();
+    });
+  } else {
+    res.sendStatus(401);
   }
 };
