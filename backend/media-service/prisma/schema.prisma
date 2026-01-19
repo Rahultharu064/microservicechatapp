@@ -1,18 +1,12 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-generator client {
-  provider = "prisma-client-js"
-  
-}
-
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
+
+generator client {
+  provider = "prisma-client-js"
+}
+
 
 
 
@@ -32,14 +26,25 @@ model Media {
   createdAt    DateTime @default(now())
 
   thumbnails   Thumbnail[]
+  voiceMessage VoiceMessage?
 }
 
 model Thumbnail {
-  id        String @id @default(uuid())
-  mediaId  String
-  size     String
-  path     String
+  id       String @id @default(uuid())
+  mediaId String
+  size    String
+  path    String
 
-  media    Media @relation(fields: [mediaId], references: [id])
+  media   Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 }
 
+model VoiceMessage {
+  id            String   @id @default(uuid())
+  mediaId       String   @unique
+  duration      Float
+  waveform      String?
+  format        String
+  convertedPath String?
+
+  media         Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+}
