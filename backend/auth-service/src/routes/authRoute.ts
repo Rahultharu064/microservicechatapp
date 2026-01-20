@@ -29,5 +29,6 @@ router.post("/refresh", rateLimit({ limit: 10, windowSeconds: 900 }), validate(r
 router.post("/forgot-password", rateLimit({ limit: 3, windowSeconds: 3600 }), validate(forgotPasswordSchema), forgotPassword);
 router.post("/reset-password", rateLimit({ limit: 5, windowSeconds: 600 }), validate(resetPasswordSchema), resetPassword);
 router.post("/verify-email", rateLimit({ limit: 5, windowSeconds: 600 }), validate(verifyEmailSchema), verifyEmail);
+router.post("/logout");
 
 export default router;

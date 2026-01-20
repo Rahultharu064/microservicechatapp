@@ -21,14 +21,14 @@ export const register = async (req: Request, res: Response) => {
 
   // Create user
   const user = await prisma.user.create({
-    data: { email, passwordHash, provider: "EMAIL" }
+    data: { email, passwordHash, provider: "EMAIL", fullName }
   });
 
   // Create user profile in user service
   await publishToQueue(QUEUES.USER_CREATED, {
     userId: user.id,
     email: user.email,
-    fullName: fullName || "",
+    fullName: user.fullName,
   });
 
   // Send verification email
@@ -106,4 +106,21 @@ export const verifyEmail = async (req: Request, res: Response) => {
   });
 
   res.json({ message: "Email verified successfully" });
+};
+
+
+export const logout = async (req: Request, res: Response) => {
+  const { userId, refreshToken } = req.body;
+  try {
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId,   
+        token: refreshToken
+      }
+    });
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    logger.error("Logout error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  } 
 };

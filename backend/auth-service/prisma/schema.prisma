@@ -25,6 +25,7 @@ model User {
   id            String        @id @default(uuid())
   email         String        @unique
   passwordHash  String?       // null for OAuth users
+  fullName      String
   provider      AuthProvider  @default(EMAIL)
   status        UserStatus    @default(ACTIVE)
 
