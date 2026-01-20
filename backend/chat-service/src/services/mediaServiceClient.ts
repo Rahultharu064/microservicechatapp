@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import FormData from "form-data";
 
 interface UploadResponse {
     id: string;
@@ -39,8 +40,7 @@ class MediaServiceClient {
         token: string
     ): Promise<UploadResponse> {
         const formData = new FormData();
-        const blob = new Blob([file.buffer], { type: file.mimetype });
-        formData.append("file", blob, file.originalname);
+        formData.append("file", file.buffer, { filename: file.originalname, contentType: file.mimetype });
 
         const response = await this.client.post<UploadResponse>(
             "/api/media/upload/single",
@@ -48,7 +48,7 @@ class MediaServiceClient {
             {
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    "Content-Type": "multipart/form-data",
+                    ...formData.getHeaders(),
                 },
             }
         );
@@ -64,8 +64,7 @@ class MediaServiceClient {
         token: string
     ): Promise<UploadResponse> {
         const formData = new FormData();
-        const blob = new Blob([file.buffer], { type: file.mimetype });
-        formData.append("voice", blob, file.originalname);
+        formData.append("voice", file.buffer, { filename: file.originalname, contentType: file.mimetype });
 
         const response = await this.client.post<UploadResponse>(
             "/api/media/voice/upload",
@@ -73,7 +72,7 @@ class MediaServiceClient {
             {
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    "Content-Type": "multipart/form-data",
+                    ...formData.getHeaders(),
                 },
             }
         );

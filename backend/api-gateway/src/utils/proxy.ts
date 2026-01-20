@@ -13,7 +13,7 @@ export const createServiceProxy = (
         pathRewrite,
         ws,
         on: {
-            error: (err: Error, req: Request, res: Response) => {
+            error: (err: Error, req: any, res: any) => {
                 logger.error(`Proxy error: ${err.message}`);
                 const response = res as any;
                 if (response.headersSent) {

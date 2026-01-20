@@ -3,10 +3,11 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
-import messageRoutes from "./routes/messageRoute.js";
-import attachmentRoutes from "./routes/attachmentRoute.js";
-import { initSockets } from "./sockets/index.js";
-import logger from "../../shared/src/logger/logger.js";
+import messageRoutes from "./routes/messageRoute.ts";
+import attachmentRoutes from "./routes/attachmentRoute.ts";
+// import fileRoutes from "./routes/fileRoute.ts";
+import { initSockets } from "./sockets/index.ts";
+import logger from "../../shared/src/logger/logger.ts";
 
 dotenv.config();
 

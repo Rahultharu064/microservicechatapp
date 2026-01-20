@@ -1,11 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
-import { authMiddleware } from "../middlewares/authMiddleware.js";
+import { authenticateJWT as authMiddleware } from "../middlewares/authMiddleware.ts";
 import {
     uploadAttachment,
     getAttachment,
     getMessageAttachments,
-} from "../controllers/attachmentController.js";
+} from "../controllers/attachmentController.ts";
 
 const router = Router();
 
