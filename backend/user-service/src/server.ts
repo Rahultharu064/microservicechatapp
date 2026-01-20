@@ -3,7 +3,7 @@ import app from "./app.ts";
 import logger from "../../shared/src/logger/logger.ts";
 import prisma from "./config/db.ts";
 
-const PORT = process.env.USER_SERVICE_PORT || 5002;
+const PORT = process.env.USER_SERVICE_PORT || 5003;
 
 async function start() {
   try {

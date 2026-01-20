@@ -1,0 +1,14 @@
+src/middleware/authMiddleware.ts(1,10): error TS1484: 'Request' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/middleware/authMiddleware.ts(1,19): error TS1484: 'Response' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/middleware/authMiddleware.ts(1,29): error TS1484: 'NextFunction' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/middleware/authMiddleware.ts(37,36): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+src/server.ts(67,9): error TS2353: Object literal may only specify known properties, and 'onProxyReq' does not exist in type 'Options<IncomingMessage, ServerResponse<IncomingMessage>>'.
+src/server.ts(67,22): error TS7006: Parameter 'proxyReq' implicitly has an 'any' type.
+src/server.ts(67,32): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server.ts(67,37): error TS7006: Parameter 'res' implicitly has an 'any' type.
+src/server.ts(70,19): error TS7006: Parameter 'err' implicitly has an 'any' type.
+src/server.ts(70,24): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server.ts(70,29): error TS7006: Parameter 'res' implicitly has an 'any' type.
