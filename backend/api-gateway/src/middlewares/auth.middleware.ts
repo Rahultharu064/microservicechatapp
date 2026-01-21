@@ -13,6 +13,7 @@ const publicPaths = [
     '/api/auth/verify-login',
     '/api/auth/forgot-password',
     '/api/auth/reset-password',
+    '/socket.io',
 ];
 
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {

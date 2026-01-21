@@ -61,6 +61,13 @@ app.use(SERVICE_ROUTES.MEDIA.path, mediaRoutes);
 app.use(SERVICE_ROUTES.SEARCH.path, searchRoutes);
 app.use(SERVICE_ROUTES.ADMIN.path, adminRoutes);
 
+// Socket.IO Proxy
+app.use('/socket.io', createProxyMiddleware(
+    config.services.chat,
+    {},
+    true // Enable WebSockets
+));
+
 // Health Check
 app.get('/', (req, res) => {
     res.json({

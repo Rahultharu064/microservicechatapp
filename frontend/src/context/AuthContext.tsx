@@ -11,6 +11,7 @@ export interface User {
 interface AuthContextType {
     isAuthenticated: boolean;
     user: User | null;
+    token: string | null;
     login: (email: string) => Promise<void>;
     verifyLogin: (email: string, otp: string) => Promise<void>;
     logout: () => Promise<void>;
@@ -26,11 +27,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null>(null);
+    const [token, setToken] = useState<string | null>(null);
 
     useEffect(() => {
         const accessToken = localStorage.getItem("accessToken");
         if (accessToken) {
             setIsAuthenticated(true);
+            setToken(accessToken);
             // TODO: Decode token or fetch user profile to set 'user' state if needed
         }
     }, []);
@@ -51,6 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(data.user);
         }
 
+        setToken(data.accessToken);
         setIsAuthenticated(true);
     };
 
@@ -81,6 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         localStorage.setItem("accessToken", data.accessToken);
         localStorage.setItem("refreshToken", data.refreshToken);
+        setToken(data.accessToken);
         setIsAuthenticated(true);
     };
 
@@ -96,11 +101,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
         setUser(null);
+        setToken(null);
         setIsAuthenticated(false);
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, user, login, verifyLogin, logout, register, forgotPassword, resetPassword, verifyEmail, refreshToken }}>
+        <AuthContext.Provider value={{ isAuthenticated, user, token, login, verifyLogin, logout, register, forgotPassword, resetPassword, verifyEmail, refreshToken }}>
             {children}
         </AuthContext.Provider>
     );

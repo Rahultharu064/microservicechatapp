@@ -5,6 +5,7 @@ import Dashboard from "../pages/Dashboard";
 import Chat from "../pages/Chat";
 import NotFound from "../pages/NotFound";
 import { useAuth } from "../context/AuthContext";
+import type { JSX } from "react";
 
 const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
     const { isAuthenticated } = useAuth();
