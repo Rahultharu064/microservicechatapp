@@ -1,9 +1,17 @@
-import React from 'react'
+import { BrowserRouter as Router } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import AppRoutes from './routes/Index';
+import ErrorBoundary from './components/ErrorBoundary';
 
-const App: React.FC = () => {
+const App = () => {
   return (
-    <div>App</div>
-  )
-}
+    <Router>
+      <ErrorBoundary>
+        <Toaster position="top-right" />
+        <AppRoutes />
+      </ErrorBoundary>
+    </Router>
+  );
+};
 
 export default App;

@@ -1,92 +1,106 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { api } from "../services/Api";
+import authService from "../services/authService";
+
+export interface User {
+    id: string;
+    email: string;
+    fullName: string;
+}
 
 interface AuthContextType {
     isAuthenticated: boolean;
-    user: any;
-    login: (email: string, password: string) => Promise<void>;
+    user: User | null;
+    login: (email: string) => Promise<void>;
+    verifyLogin: (email: string, otp: string) => Promise<void>;
     logout: () => Promise<void>;
+    register: (email: string, password: string, fullName: string) => Promise<void>;
+    forgotPassword: (email: string) => Promise<void>;
+    resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
+    verifyEmail: (email: string, otp: string) => Promise<void>;
+    refreshToken: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<User | null>(null);
 
     useEffect(() => {
         const accessToken = localStorage.getItem("accessToken");
         if (accessToken) {
             setIsAuthenticated(true);
+            // TODO: Decode token or fetch user profile to set 'user' state if needed
         }
     }, []);
 
-    const login = async (email: string, password: string) => {
-        const response = await api.post("/auth/login", { email, password });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
+    const login = async (email: string) => {
+        await authService.login(email);
+        // Login initiates OTP, so we don't set tokens here
+    };
+
+    const verifyLogin = async (email: string, otp: string) => {
+        const data = await authService.verifyLogin(email, otp);
+        localStorage.setItem("accessToken", data.accessToken);
+        localStorage.setItem("refreshToken", data.refreshToken);
+
+        // Assuming the backend returns user info in the response, we can set it here.
+        // If not, we might need to decode the token or fetch the profile.
+        if (data.user) {
+            setUser(data.user);
+        }
+
         setIsAuthenticated(true);
     };
 
-   
-
     const register = async (email: string, password: string, fullName: string) => {
-        const response = await api.post("/auth/register", { email, password, fullName });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
-        setIsAuthenticated(true);
+        await authService.register(email, password, fullName);
+        // Registration might send token or require verification. 
     };
 
     const forgotPassword = async (email: string) => {
-        const response = await api.post("/auth/forgot-password", { email });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
-        setIsAuthenticated(true);
+        await authService.forgotPassword(email);
     };
 
-    const resetPassword = async (email: string, password: string, fullName: string) => {
-        const response = await api.post("/auth/reset-password", { email, password, fullName });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
-        setIsAuthenticated(true);
+    const resetPassword = async (email: string, otp: string, newPassword: string) => {
+        await authService.resetPassword(email, otp, newPassword);
     };
 
-    const verifyEmail = async (email: string, password: string, fullName: string) => {
-        const response = await api.post("/auth/verify-email", { email, password, fullName });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
-        setIsAuthenticated(true);
+    const verifyEmail = async (email: string, otp: string) => {
+        await authService.verifyEmail(email, otp);
     };
 
-  
     const refreshToken = async () => {
-        const response = await api.post("/auth/refresh-token", {
-            userId: user?.id,
-            refreshToken: localStorage.getItem("refreshToken"),
-        });
-        localStorage.setItem("accessToken", response.data.accessToken);
-        localStorage.setItem("refreshToken", response.data.refreshToken);
+        const currentRefreshToken = localStorage.getItem("refreshToken");
+        if (!currentRefreshToken) return;
+
+        // Note: user?.id might be undefined if user is not set. 
+        // Ensure backend handles missing userId if it relies only on token.
+        const data = await authService.refreshToken(user?.id || "", currentRefreshToken);
+
+        localStorage.setItem("accessToken", data.accessToken);
+        localStorage.setItem("refreshToken", data.refreshToken);
         setIsAuthenticated(true);
     };
-
-
-
-    
 
     const logout = async () => {
-        await api.post("/auth/logout", {
-            userId: user?.id,
-            refreshToken: localStorage.getItem("refreshToken"),
-        });
+        try {
+            const currentRefreshToken = localStorage.getItem("refreshToken");
+            if (currentRefreshToken) {
+                await authService.logout(user?.id || "", currentRefreshToken);
+            }
+        } catch (error) {
+            console.error("Logout failed", error);
+        }
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
+        setUser(null);
         setIsAuthenticated(false);
     };
 
-
     return (
-        <AuthContext.Provider value={{ isAuthenticated, user, login, logout, register, forgotPassword, resetPassword, verifyEmail, refreshToken }}>
+        <AuthContext.Provider value={{ isAuthenticated, user, login, verifyLogin, logout, register, forgotPassword, resetPassword, verifyEmail, refreshToken }}>
             {children}
         </AuthContext.Provider>
     );

@@ -7,8 +7,12 @@ export const createConnectRabbitMQ = async () => {
     try {
         const url = process.env.RABBITMQ_URL || `amqp://${process.env.RABBITMQ_USER || "admin"}:${process.env.RABBITMQ_PASSWORD || "admin123"}@${process.env.RABBITMQ_HOST || "localhost"}:${process.env.RABBITMQ_PORT || "5672"}`;
         const connection = await amqp.connect(url);
+        connection.on("error", (err) => logger.error("RabbitMQ Connection Error", err));
+        connection.on("close", () => logger.warn("RabbitMQ Connection Closed"));
         logger.info("❤️RabbitMQ connected successfully");
-        return (channel = await connection.createChannel());
+        channel = await connection.createChannel();
+        channel.on("error", (err) => logger.error("RabbitMQ Channel Error", err));
+        return channel;
     }
     catch (error) {
         logger.error("😒RabbitMQ connection error", error);

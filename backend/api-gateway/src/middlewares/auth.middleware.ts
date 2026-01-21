@@ -10,6 +10,7 @@ const publicPaths = [
     '/api/auth/google',
     '/api/auth/github',
     '/api/auth/verify-email',
+    '/api/auth/verify-login',
     '/api/auth/forgot-password',
     '/api/auth/reset-password',
 ];

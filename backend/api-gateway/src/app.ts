@@ -20,7 +20,10 @@ const app = express();
 
 // Security and Monitoring
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: config.frontendUrl,
+    credentials: true
+}));
 app.use(morgan('dev'));
 
 // Global Rate Limiting

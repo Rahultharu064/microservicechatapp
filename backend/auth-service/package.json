@@ -5,7 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon --exec tsx src/server.ts",
-    "dev": "concurrently \"nodemon --exec \\\"ts-node --esm\\\" src/server.ts\" \"npm run watch:shared\"",
+    "dev": "concurrently \"tsx watch src/server.ts\" \"npm run watch:shared\"",
     "watch:shared": "tsc -w -p ../shared/tsconfig.json"
   },
   "keywords": [],

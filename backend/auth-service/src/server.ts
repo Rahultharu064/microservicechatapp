@@ -1,5 +1,5 @@
 import "dotenv/config";
-import app from "./app.js";
+import app from "./app.ts";
 import redisClient, { connectRedis } from "../../shared/src/redis/client.ts";
 import { createConnectRabbitMQ } from "../../shared/src/rabbitmq/connection.ts";
 import logger from "../../shared/src/logger/logger.ts";
