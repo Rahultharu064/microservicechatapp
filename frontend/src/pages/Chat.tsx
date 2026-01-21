@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useChat } from '../context/ChatContext';
 import { useAuth } from '../context/AuthContext';
-import { Send, User, Search, MoreVertical, Shield } from 'lucide-react';
+import { Send, User, Search, MoreVertical, Shield, Plus, X } from 'lucide-react';
 import { decryptMessage } from '../utils/encryption';
+import userService, { type UserProfile } from '../services/userService.ts';
 
 const Chat: React.FC = () => {
   const { user } = useAuth();
@@ -18,7 +19,24 @@ const Chat: React.FC = () => {
 
   const [input, setInput] = useState('');
   const [decryptedMessages, setDecryptedMessages] = useState<Record<string, string>>({});
+  const [showUserSearch, setShowUserSearch] = useState(false);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all users for discovery
+  useEffect(() => {
+    userService.getAllUsers().then(setAllUsers).catch(console.error);
+  }, []);
+
+  // Filter users based on search
+  const filteredUsers = useMemo(() => {
+    return allUsers.filter(u =>
+      u.id !== user?.id &&
+      (u.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [allUsers, searchQuery, user]);
 
   // Decrypt messages as they arrive
   useEffect(() => {
@@ -48,19 +66,93 @@ const Chat: React.FC = () => {
   };
 
   const activeConversation = conversations.find(c => c.participants.some(p => p.id === activeChat));
-  const otherUser = activeConversation?.participants.find(p => p.id === activeChat);
+  const otherUser = activeConversation?.participants.find(p => p.id === activeChat) || allUsers.find(u => u.id === activeChat);
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-gray-900 text-white rounded-xl overflow-hidden border border-gray-800 shadow-2xl">
+    <div className="flex h-[calc(100vh-120px)] bg-gray-900 text-white rounded-xl overflow-hidden border border-gray-800 shadow-2xl relative">
+
+      {/* User Search Overlay */}
+      {showUserSearch && (
+        <div className="absolute inset-0 z-50 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-start p-8 animate-in fade-in zoom-in duration-200">
+          <div className="w-full max-w-2xl flex flex-col h-full">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Start New Conversation</h2>
+              <button
+                onClick={() => setShowUserSearch(false)}
+                className="p-2 hover:bg-gray-800 rounded-full transition-colors"
+                title="Close Search"
+                aria-label="Close user search"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="relative mb-6">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-gray-800 border-none rounded-2xl py-4 pl-12 pr-4 focus:ring-2 focus:ring-blue-500 text-lg transition-all"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+              {filteredUsers.length === 0 ? (
+                <div className="text-center py-20 text-gray-500">No users found matching "{searchQuery}"</div>
+              ) : (
+                filteredUsers.map(u => (
+                  <div
+                    key={u.id}
+                    onClick={() => {
+                      setActiveChat(u.id);
+                      setShowUserSearch(false);
+                      setSearchQuery('');
+                    }}
+                    className="p-4 flex items-center space-x-4 hover:bg-gray-800 rounded-2xl cursor-pointer transition-all border border-transparent hover:border-gray-700 active:scale-[0.98]"
+                  >
+                    <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg">
+                      {u.fullName.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="font-bold">{u.fullName}</h4>
+                      <p className="text-sm text-gray-400">{u.email}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <div className="w-80 border-r border-gray-800 flex flex-col bg-gray-900/50">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+        <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
           <h2 className="text-xl font-bold">Chats</h2>
-          <Search className="h-5 w-5 text-gray-400 cursor-pointer" />
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowUserSearch(true)}
+              className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full transition-all shadow-lg active:scale-95"
+              title="New Chat"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-gray-900/30">
           {conversations.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 mt-10">No conversations yet</div>
+            <div className="p-8 text-center text-gray-500 mt-10">
+              <p className="mb-4">No active conversations</p>
+              <button
+                onClick={() => setShowUserSearch(true)}
+                className="text-blue-500 hover:underline font-medium"
+              >
+                Find someone to talk to
+              </button>
+            </div>
           ) : (
             conversations.map((conv) => {
               const partner = conv.participants.find(p => p.id !== user?.id);
@@ -188,7 +280,7 @@ const Chat: React.FC = () => {
               <User className="h-12 w-12 text-gray-600" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Your Workspace Chat</h2>
-            <p className="max-w-md">Select a conversation from the sidebar to start messaging. All chats are end-to-end encrypted using high-grade security protocols.</p>
+            <p className="max-w-md">Select a conversation from the sidebar or click the plus icon to find someone to talk to. All chats are end-to-end encrypted.</p>
           </div>
         )}
       </div>

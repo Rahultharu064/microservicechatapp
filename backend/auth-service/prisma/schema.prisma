@@ -21,15 +21,22 @@ enum AuthProvider {
 }
 
 
-model User {
-  id            String        @id @default(uuid())
-  email         String        @unique
-  passwordHash  String?       // null for OAuth users
-  fullName      String
-  provider      AuthProvider  @default(EMAIL)
-  status        UserStatus    @default(ACTIVE)
+enum UserRole {
+  USER
+  ADMIN
+}
 
-  isEmailVerified Boolean     @default(false)
+model User {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  passwordHash    String?       // null for OAuth users
+  fullName        String
+  phone           String?
+  profilePic      String?
+  provider        AuthProvider  @default(EMAIL)
+  status          UserStatus    @default(ACTIVE)
+  isEmailVerified Boolean       @default(false)
+  role            UserRole      @default(USER)
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

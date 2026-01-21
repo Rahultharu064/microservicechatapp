@@ -33,7 +33,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token) {
             const newSocket = io("http://localhost:5000", {
                 auth: { token },
-                path: "/socket.io", // Ensure this matches API Gateway if proxied
+                path: "/socket.io"
             });
 
             newSocket.on("connect", () => {

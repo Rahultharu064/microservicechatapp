@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `user` ADD COLUMN `phone` VARCHAR(191) NULL,
+    ADD COLUMN `profilePic` VARCHAR(191) NULL,
+    ADD COLUMN `role` ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER';

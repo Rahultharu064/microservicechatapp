@@ -6,7 +6,7 @@ import config from '../config/env.ts';
 const publicPaths = [
     '/api/auth/login',
     '/api/auth/register',
-    '/api/auth/refresh-token',
+    '/api/auth/refresh',
     '/api/auth/google',
     '/api/auth/github',
     '/api/auth/verify-email',

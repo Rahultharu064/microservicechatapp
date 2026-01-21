@@ -15,24 +15,33 @@ datasource db {
 
 
 
-model User {
-  id         String   @id
-  email      String   @unique
-  phone      String?
-  fullName   String?
-  profilePic String?
-  role       Role     @default(USER)
-  status     Status   @default(ACTIVE)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
 }
 
-enum Role {
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
+enum UserRole {
   USER
   ADMIN
 }
 
-enum Status {
-  ACTIVE
-  BLOCKED
+model User {
+  id              String       @id
+  email           String       @unique
+  passwordHash    String?      // From auth-service
+  fullName        String
+  phone           String?
+  profilePic      String?
+  provider        AuthProvider @default(EMAIL)
+  status          UserStatus   @default(ACTIVE)
+  isEmailVerified Boolean      @default(false)
+  role            UserRole     @default(USER)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 }

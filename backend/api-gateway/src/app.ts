@@ -49,9 +49,10 @@ app.use(SERVICE_ROUTES.NOTIFICATIONS.path, (req, res, next) => {
 });
 // Correction: I should create notification routes too.
 import configServices from './config/env.ts';
-import { createProxyMiddleware } from './middlewares/proxy.middleware.ts';
+import { createProxyMiddleware as createServiceProxy } from './middlewares/proxy.middleware.ts';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
-app.use(SERVICE_ROUTES.NOTIFICATIONS.path, createProxyMiddleware(
+app.use(SERVICE_ROUTES.NOTIFICATIONS.path, createServiceProxy(
     configServices.services.notification,
     SERVICE_ROUTES.NOTIFICATIONS.rewrite
 ));
@@ -61,12 +62,13 @@ app.use(SERVICE_ROUTES.MEDIA.path, mediaRoutes);
 app.use(SERVICE_ROUTES.SEARCH.path, searchRoutes);
 app.use(SERVICE_ROUTES.ADMIN.path, adminRoutes);
 
-// Socket.IO Proxy
-app.use('/socket.io', createProxyMiddleware(
-    config.services.chat,
-    {},
-    true // Enable WebSockets
-));
+// Socket.IO Proxy - Ensure path is preserved by using pathFilter (v3 way)
+app.use(createProxyMiddleware({
+    target: config.services.chat,
+    ws: true,
+    changeOrigin: true,
+    pathFilter: '/socket.io'
+}));
 
 // Health Check
 app.get('/', (req, res) => {

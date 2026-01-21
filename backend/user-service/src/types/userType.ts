@@ -1,9 +1,10 @@
-import type{ Request } from "express";
+import type { Request } from "express";
 
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    email: string;
-    role: string;
+    userId?: string;
+    email?: string;
+    role?: string;
   };
 }

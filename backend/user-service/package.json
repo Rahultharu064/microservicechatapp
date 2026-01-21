@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon --exec tsx src/server.ts",
-    "dev": "concurrently \"nodemon --exec \\\"ts-node --esm\\\" src/server.ts\" \"npm run watch:shared\"",
+    "start": "tsx src/server.ts",
+    "dev": "nodemon --exec tsx src/server.ts",
     "watch:shared": "tsc -w -p ../shared/tsconfig.json"
   },
   "keywords": [],
