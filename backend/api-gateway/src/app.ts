@@ -8,12 +8,8 @@ import { rateLimitMiddleware } from './middlewares/rateLimit.middleware.ts';
 import { authMiddleware } from './middlewares/auth.middleware.ts';
 import { SERVICE_ROUTES } from './config/services.ts';
 
-import authRoutes from './routes/auth.routes.ts';
-import userRoutes from './routes/user.routes.ts';
-import chatRoutes from './routes/chat.routes.ts';
-import mediaRoutes from './routes/media.routes.ts';
-import searchRoutes from './routes/search.routes.ts';
-import adminRoutes from './routes/admin.routes.ts';
+import { createProxyMiddleware as createServiceProxy } from './middlewares/proxy.middleware.ts';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import logger from '@shared/logger/logger.ts';
 
 const app = express();
@@ -33,34 +29,14 @@ app.use(rateLimitMiddleware);
 // Verify token for all routes except public ones
 app.use(authMiddleware);
 
-// Register Service Routes
-app.use(SERVICE_ROUTES.AUTH.path, authRoutes);
-app.use(SERVICE_ROUTES.USERS.path, userRoutes);
-app.use(SERVICE_ROUTES.CHAT.path, chatRoutes);
-app.use(SERVICE_ROUTES.NOTIFICATIONS.path, (req, res, next) => {
-    // Placeholder - Notifications route (similar to others or inline)
-    // For now we can use a direct proxy here or creating a route file if not created
-    // Since we don't have routes/notification.routes.ts yet (my oversight in plan), let's create inline or skip if user didn't ask explicitly (but he asked for all services from routes)
-    // Wait, let's just use proxy middleware directly here if needed or I should have created routes/notification.routes.ts
-    // I will check if I missed it in the plan. Yes I missed it in step 5 list.
-    // I will add it now inline for simplicity or quickly write a file.
-    // Let's create a notification route file to be consistent.
-    next();
-});
-// Correction: I should create notification routes too.
-import configServices from './config/env.ts';
-import { createProxyMiddleware as createServiceProxy } from './middlewares/proxy.middleware.ts';
-import { createProxyMiddleware } from 'http-proxy-middleware';
-
-app.use(SERVICE_ROUTES.NOTIFICATIONS.path, createServiceProxy(
-    configServices.services.notification,
-    SERVICE_ROUTES.NOTIFICATIONS.rewrite
-));
-
-
-app.use(SERVICE_ROUTES.MEDIA.path, mediaRoutes);
-app.use(SERVICE_ROUTES.SEARCH.path, searchRoutes);
-app.use(SERVICE_ROUTES.ADMIN.path, adminRoutes);
+// Register Service Routes (Globally with pathFilter)
+app.use(createServiceProxy(config.services.auth, SERVICE_ROUTES.AUTH.rewrite, SERVICE_ROUTES.AUTH.path));
+app.use(createServiceProxy(config.services.user, SERVICE_ROUTES.USERS.rewrite, SERVICE_ROUTES.USERS.path));
+app.use(createServiceProxy(config.services.chat, SERVICE_ROUTES.CHAT.rewrite, SERVICE_ROUTES.CHAT.path, true));
+app.use(createServiceProxy(config.services.notification, SERVICE_ROUTES.NOTIFICATIONS.rewrite, SERVICE_ROUTES.NOTIFICATIONS.path));
+app.use(createServiceProxy(config.services.media, SERVICE_ROUTES.MEDIA.rewrite, SERVICE_ROUTES.MEDIA.path));
+app.use(createServiceProxy(config.services.search, SERVICE_ROUTES.SEARCH.rewrite, SERVICE_ROUTES.SEARCH.path));
+app.use(createServiceProxy(config.services.admin, SERVICE_ROUTES.ADMIN.rewrite, SERVICE_ROUTES.ADMIN.path));
 
 // Socket.IO Proxy - Ensure path is preserved by using pathFilter (v3 way)
 app.use(createProxyMiddleware({

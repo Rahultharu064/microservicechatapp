@@ -18,6 +18,7 @@ const publicPaths = [
 
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const isPublic = publicPaths.some(path => req.path.startsWith(path));
+    logger.info(`AuthMiddleware: path=${req.path}, isPublic=${isPublic}`);
 
     if (isPublic) {
         return next();

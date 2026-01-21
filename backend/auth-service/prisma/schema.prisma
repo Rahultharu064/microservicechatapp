@@ -44,6 +44,7 @@ model User {
   refreshTokens RefreshToken[]
 
   @@index([email])
+  @@map("user")
 }
 
 
@@ -61,6 +62,7 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token])
+  @@map("refreshtoken")
 }
 
 
@@ -75,4 +77,5 @@ model LoginAudit {
 
   @@index([email])
   @@index([ip])
+  @@map("loginaudit")
 }

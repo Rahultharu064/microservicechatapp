@@ -5,6 +5,7 @@ import logger from '../../../shared/src/logger/logger.ts';
 export const createServiceProxy = (
     target: string,
     pathRewrite: { [key: string]: string },
+    pathFilter?: string | string[] | ((pathname: string, req: Request) => boolean),
     ws: boolean = false
 ) => {
     const options: Options = {
@@ -28,6 +29,10 @@ export const createServiceProxy = (
             },
         },
     };
+
+    if (pathFilter) {
+        options.pathFilter = pathFilter as any;
+    }
 
     return createProxyMiddleware(options);
 };

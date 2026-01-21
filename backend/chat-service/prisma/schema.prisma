@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -32,12 +26,15 @@ model PrivateMessage {
   updatedAt       DateTime      @updatedAt
 
   @@index([senderId, receiverId])
+  @@map("privatemessage")
 }
 
 model Group {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
+
+  @@map("group")
 }
 
 model GroupMember {
@@ -49,6 +46,7 @@ model GroupMember {
   createdAt         DateTime @default(now())
 
   @@unique([groupId, userId])
+  @@map("groupmember")
 }
 
 model GroupMessage {
@@ -59,6 +57,8 @@ model GroupMessage {
   iv         String
   keyVersion Int
   createdAt  DateTime @default(now())
+
+  @@map("groupmessage")
 }
 
 model MessageReceipt {
@@ -69,6 +69,7 @@ model MessageReceipt {
   readAt    DateTime @default(now())
 
   @@unique([messageId, userId])
+  @@map("messagereceipt")
 }
 
 model EncryptedFile {
@@ -78,6 +79,8 @@ model EncryptedFile {
   mimeType   String
   fileSize   Int
   createdAt  DateTime @default(now())
+
+  @@map("encryptedfile")
 }
 
 model MessageAttachment {
@@ -93,5 +96,5 @@ model MessageAttachment {
 
   @@index([messageId])
   @@index([mediaId])
+  @@map("messageattachment")
 }
-

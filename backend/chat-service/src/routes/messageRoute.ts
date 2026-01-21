@@ -4,6 +4,7 @@ import { authenticateJWT } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
+router.get("/conversations", authenticateJWT, messageController.getConversations);
 router.get("/private/:otherId", authenticateJWT, messageController.getPrivateMessages);
 router.get("/group/:groupId", authenticateJWT, messageController.getGroupMessages);
 router.get("/sync", authenticateJWT, messageController.syncMessages);

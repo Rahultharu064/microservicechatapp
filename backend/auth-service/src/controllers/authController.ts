@@ -42,18 +42,31 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   const { email } = req.body;
+
+  // Check if user exists before sending OTP
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(404).json({ message: "User not found. Please register first." });
+  }
+
   await generateOTP(email);
   res.json({ message: "OTP sent" });
 };
 
 export const verifyLogin = async (req: Request, res: Response) => {
   const { email, otp } = req.body;
+  logger.info(`verifyLogin called for email: [${email}]`);
+
   await verifyOTP(email, otp);
+  logger.info(`OTP verified for [${email}], seeking user in DB...`);
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
+    logger.warn(`User NOT FOUND in DB for email: [${email}]`);
     return res.status(404).json({ message: "User not found" });
   }
+
+  logger.info(`User found: ${user.id}, status: ${user.status}`);
 
   if (user.status !== "ACTIVE") {
     return res.status(403).json({ message: "Account is not active" });
@@ -114,7 +127,7 @@ export const logout = async (req: Request, res: Response) => {
   try {
     await prisma.refreshToken.deleteMany({
       where: {
-        userId,   
+        userId,
         token: refreshToken
       }
     });
@@ -122,5 +135,5 @@ export const logout = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error("Logout error:", error);
     res.status(500).json({ message: "Internal server error" });
-  } 
+  }
 };

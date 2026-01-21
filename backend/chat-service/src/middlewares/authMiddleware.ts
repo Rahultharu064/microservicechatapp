@@ -14,13 +14,19 @@ export const authenticateJWT = (req: Request, res: Response, next: NextFunction)
       return res.sendStatus(500);
     }
 
-    jwt.verify(token, secret, (err: any, user: any) => {
+    jwt.verify(token, secret, (err: any, decoded: any) => {
       if (err) {
         logger.error("JWT verification failed", err);
         return res.sendStatus(403);
       }
 
-      (req as any).user = user;
+      // Support both userId (auth-service) and id (standard)
+      const userId = decoded.userId || decoded.id || decoded.sub;
+
+      (req as any).user = {
+        ...decoded,
+        id: userId
+      };
       next();
     });
   } else {

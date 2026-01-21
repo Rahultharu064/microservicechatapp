@@ -1,30 +1,30 @@
 export const SERVICE_ROUTES = {
     AUTH: {
         path: '/api/auth',
-        rewrite: { '^': '/auth' },
+        rewrite: { '^/api/auth': '/auth' },
     },
     USERS: {
         path: '/api/users',
-        rewrite: { '^': '/users' },
+        rewrite: { '^/api/users': '/users' },
     },
     CHAT: {
         path: '/api/chat',
-        rewrite: { '^': '/chat' },
+        rewrite: { '^/api/chat': '/api' },
     },
     NOTIFICATIONS: {
         path: '/api/notifications',
-        rewrite: { '^': '/notifications' },
+        rewrite: { '^/api/notifications': '/notifications' },
     },
     MEDIA: {
         path: '/api/media',
-        rewrite: { '^': '/media' },
+        rewrite: { '^/api/media': '/media' },
     },
     SEARCH: {
         path: '/api/search',
-        rewrite: { '^': '/search' },
+        rewrite: { '^/api/search': '/search' },
     },
     ADMIN: {
         path: '/api/admin',
-        rewrite: { '^': '/admin' },
+        rewrite: { '^/api/admin': '/admin' },
     },
 };

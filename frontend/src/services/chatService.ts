@@ -22,17 +22,17 @@ export interface Conversation {
 
 const chatService = {
     getPrivateMessages: async (otherUserId: string): Promise<Message[]> => {
-        const response = await api.get(`/messages/private/${otherUserId}`);
+        const response = await api.get(`/chat/messages/private/${otherUserId}`);
         return response.data;
     },
 
     getGroupMessages: async (groupId: string): Promise<Message[]> => {
-        const response = await api.get(`/messages/group/${groupId}`);
+        const response = await api.get(`/chat/messages/group/${groupId}`);
         return response.data;
     },
 
     getConversations: async (): Promise<Conversation[]> => {
-        const response = await api.get("/messages/conversations");
+        const response = await api.get("/chat/messages/conversations");
         return response.data;
     }
 };

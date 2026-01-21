@@ -14,20 +14,6 @@ interface PrivateMessagePayload {
 }
 
 export const privateChatSocket = (io: Server) => {
-  io.use(async (socket, next) => {
-    try {
-      const token = socket.handshake.auth.token;
-      if (!token) return next(new Error("Authentication error"));
-
-      const user = jwt.verify(token, process.env.JWT_SECRET!) as any;
-      (socket as any).user = user;
-      next();
-    } catch (err) {
-      logger.error("Socket authentication failed", err);
-      next(new Error("Unauthorized"));
-    }
-  });
-
   io.on("connection", (socket: Socket) => {
     const user = (socket as any).user;
     if (!user) return;
