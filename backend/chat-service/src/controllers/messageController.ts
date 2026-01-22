@@ -6,20 +6,52 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
     const { otherId } = req.params;
-    const { limit = "50", offset = "0" } = req.query;
+    const { limit = "50", offset = "0", beforeId } = req.query as { limit?: string; offset?: string; beforeId?: string };
 
     const otherIdStr = otherId as string;
-    const messages = await prisma.privateMessage.findMany({
-      where: {
-        OR: [
-          { senderId: userId, receiverId: otherIdStr },
-          { senderId: otherIdStr, receiverId: userId },
+    let messages;
+    if (beforeId) {
+      // Anchor by the beforeId message's timestamp; then fetch older than that (stable with id tie-breaker)
+      const anchor = await prisma.privateMessage.findUnique({ where: { id: beforeId as string } });
+      const anchorTime = anchor?.createdAt || new Date();
+
+      messages = await prisma.privateMessage.findMany({
+        where: {
+          OR: [
+            { senderId: userId, receiverId: otherIdStr },
+            { senderId: otherIdStr, receiverId: userId },
+          ],
+          AND: [
+            {
+              OR: [
+                { createdAt: { lt: anchorTime } },
+                { createdAt: anchorTime, id: { lt: beforeId as string } },
+              ],
+            },
+          ],
+        },
+        orderBy: [
+          { createdAt: "desc" },
+          { id: "desc" },
         ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: parseInt(limit as string),
-      skip: parseInt(offset as string),
-    });
+        take: parseInt(limit as string),
+      });
+    } else {
+      messages = await prisma.privateMessage.findMany({
+        where: {
+          OR: [
+            { senderId: userId, receiverId: otherIdStr },
+            { senderId: otherIdStr, receiverId: userId },
+          ],
+        },
+        orderBy: [
+          { createdAt: "desc" },
+          { id: "desc" },
+        ],
+        take: parseInt(limit as string),
+        skip: parseInt(offset as string),
+      });
+    }
 
     res.json(messages.reverse());
   } catch (err) {
@@ -109,7 +141,75 @@ export const getConversations = async (req: Request, res: Response) => {
       }
     }
 
-    const conversations = Array.from(conversationMap.values());
+    let conversations = Array.from(conversationMap.values());
+
+    // Optional enrichment: attach partner fullName/profile from User Service if configured
+    const userServiceUrl = process.env.USER_SERVICE_URL || process.env.API_GATEWAY_URL;
+    if (userServiceUrl) {
+      try {
+        // Collect unique partner IDs
+        const partnerIds = Array.from(new Set(conversations.map((c: any) => {
+          const p = c.participants?.find((p: any) => String(p.id) !== String(userId));
+          return p?.id as string | undefined;
+        }).filter(Boolean))) as string[];
+
+        const baseUrl = userServiceUrl.replace(/\/$/, '');
+        const profileMap = new Map<string, { id: string; fullName: string; profilePic?: string }>();
+
+        // Try batch endpoint first: GET /users?ids=a,b,c
+        let batchOk = false;
+        try {
+          const query = encodeURIComponent(partnerIds.join(','));
+          const batchResp = await fetch(`${baseUrl}/users?ids=${query}`);
+          if (batchResp.ok) {
+            const arr = await batchResp.json();
+            if (Array.isArray(arr)) {
+              for (const u of arr) {
+                if (!u || !u.id) continue;
+                profileMap.set(String(u.id), {
+                  id: String(u.id),
+                  fullName: u.fullName || u.name || u.email || 'Unknown',
+                  profilePic: u.profilePic || undefined,
+                });
+              }
+              batchOk = true;
+            }
+          }
+        } catch {
+          // ignore and fallback to per-id
+        }
+
+        // Fallback to per-id if batch not available
+        if (!batchOk) {
+          const profiles = await Promise.all(
+            partnerIds.map(async (id) => {
+              try {
+                const resp = await fetch(`${baseUrl}/users/${id}`);
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                return { id: String(id), fullName: data.fullName || data.name || data.email || 'Unknown', profilePic: data.profilePic || undefined };
+              } catch {
+                return null;
+              }
+            })
+          );
+          for (const p of profiles) if (p) profileMap.set(p.id, p);
+        }
+
+        // Replace participant stubs with enriched data where available
+        conversations = conversations.map((c: any) => {
+          const parts = c.participants || [];
+          const enriched = parts.map((p: any) => {
+            const prof = profileMap.get(String(p.id));
+            return prof ? { id: prof.id, fullName: prof.fullName, profilePic: prof.profilePic } : p;
+          });
+          return { ...c, participants: enriched };
+        });
+      } catch (e) {
+        // best-effort enrichment; continue without blocking
+        logger.warn('Conversation enrichment failed', e as any);
+      }
+    }
 
     // Note: To match the frontend expectation of full participant objects, 
     // the frontend currently expects { id, fullName, profilePic }.

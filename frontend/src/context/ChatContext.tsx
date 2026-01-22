@@ -23,13 +23,13 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { user, token } = useAuth();
+    const { user, token, refreshToken } = useAuth();
     const [socket, setSocket] = useState<Socket | null>(null);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [activeChat, setActiveChat] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [hasMore, setHasMore] = useState<boolean>(true);
-    const oldestCursorRef = useRef<string | null>(null); // ISO date of oldest loaded message
+    const oldestCursorRef = useRef<string | null>(null); // Oldest loaded message ID
     const [typingStatus, setTypingStatus] = useState<Record<string, boolean>>({});
     const [onlineUsers, setOnlineUsers] = useState<Record<string, string>>({});
     const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'reconnecting' | 'disconnected'>('disconnected');
@@ -52,7 +52,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token) {
             const newSocket = io("http://localhost:5000", {
                 auth: { token },
-                path: "/socket.io"
+                path: "/socket.io",
+                transports: ["websocket"],
+                reconnection: true,
+                reconnectionAttempts: Infinity,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 20000
             });
             setConnectionStatus('connecting');
 
@@ -63,6 +69,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             newSocket.on("disconnect", () => {
                 setConnectionStatus('disconnected');
+            });
+
+            newSocket.on("connect_error", async (err: { message?: string }) => {
+                // If server reports auth expired, refresh and reconnect with the new token
+                if (err?.message === 'AUTH_EXPIRED') {
+                    try {
+                        await refreshToken();
+                        const fresh = localStorage.getItem('accessToken');
+                        if (fresh) {
+                            // update auth for the same socket instance then reconnect
+                            (newSocket as any).auth = { token: fresh };
+                            newSocket.connect();
+                            return;
+                        }
+                    } catch {
+                        // fallthrough to reconnecting state
+                    }
+                }
+                setConnectionStatus('reconnecting');
             });
 
             newSocket.io.on("reconnect_attempt", () => {
@@ -124,14 +149,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             lastMessage: message,
                             unreadCount: String(currentActive) === String(otherPartyId) ? 0 : updated[idx].unreadCount + (isOutgoing ? 0 : 1)
                         };
-                        return updated;
+                        // Reorder like real chat apps: most recent conversation at top
+                        return updated.sort((a, b) => {
+                            const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+                            const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+                            return bt - at;
+                        });
                     }
                     return prev;
                 });
             });
 
             newSocket.on("message:status", ({ messageId, status }: { messageId: string, status: string }) => {
-                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: status as any } : m));
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: status as unknown as Message['status'] } : m));
             });
 
             newSocket.on("typing:start", ({ from }: { from: string }) => {
@@ -151,12 +181,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         else {
             setConnectionStatus('disconnected');
         }
-    }, [token]);
+    }, [token, refreshToken]);
 
     // Fetch initial conversations
     useEffect(() => {
         if (user) {
-            chatService.getConversations().then(setConversations).catch(console.error);
+            chatService.getConversations()
+                .then(list => list.sort((a, b) => {
+                    const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+                    const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+                    return bt - at;
+                }))
+                .then(setConversations)
+                .catch(console.error);
         }
     }, [user]);
 
@@ -168,7 +205,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 .then((data) => {
                     setMessages(data);
                     if (data.length > 0) {
-                        oldestCursorRef.current = data[0].createdAt;
+                        // Data is ascending (oldest -> newest). Track oldest message id for cursor.
+                        oldestCursorRef.current = data[0].id;
                     } else {
                         oldestCursorRef.current = null;
                     }
@@ -213,7 +251,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         lastMessage: optimisticMsg,
                         unreadCount: 0
                     };
-                    return updated;
+                    // Reorder on send as well
+                    return updated.sort((a, b) => {
+                        const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+                        const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+                        return bt - at;
+                    });
                 }
                 return prev;
             });
@@ -231,18 +274,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadMore = async () => {
         const chatId = activeChatRef.current;
         if (!chatId || !hasMore) return;
-        const before = oldestCursorRef.current || undefined;
+        const beforeId = oldestCursorRef.current || undefined;
         const LIMIT = 30;
         try {
             setLoadingMore(true);
-            const older = await chatService.getPrivateMessages(chatId, { before, limit: LIMIT });
+            const older = await chatService.getPrivateMessages(chatId, { beforeId, limit: LIMIT });
             if (older.length > 0) {
                 setMessages(prev => [...older, ...prev]);
-                oldestCursorRef.current = older[0].createdAt;
+                oldestCursorRef.current = older[0].id;
             }
             setHasMore(older.length >= LIMIT);
-        } catch (e) {
-            console.error('Failed to load more messages', e);
+        } catch {
+            console.error('Failed to load more messages');
         } finally {
             setLoadingMore(false);
         }

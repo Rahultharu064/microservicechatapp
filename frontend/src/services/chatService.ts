@@ -23,12 +23,13 @@ export interface Conversation {
 const chatService = {
     getPrivateMessages: async (
         otherUserId: string,
-        options?: { before?: string; limit?: number }
+        options?: { beforeId?: string; limit?: number; offset?: number }
     ): Promise<Message[]> => {
-        const params: Record<string, any> = {};
-        if (options?.before) params.before = options.before;
-        if (options?.limit) params.limit = options.limit;
-        const response = await api.get(`/chat/messages/private/${otherUserId}`,{ params });
+        const params: Record<string, string | number> = {};
+        if (options?.beforeId) params.beforeId = options.beforeId;
+        if (options?.limit !== undefined) params.limit = options.limit;
+        if (options?.offset !== undefined) params.offset = options.offset;
+        const response = await api.get(`/chat/messages/private/${otherUserId}`, { params });
         return response.data;
     },
 

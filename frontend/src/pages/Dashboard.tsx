@@ -29,15 +29,32 @@ export default function Dashboard() {
     const [input, setInput] = useState('');
     const [decryptedMessages, setDecryptedMessages] = useState<Record<string, string>>({});
     const [showUserSearch, setShowUserSearch] = useState(false);
-    const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+    const [allUsers, setAllUsers] = useState<UserProfile[]>(() => {
+        try {
+            const cached = localStorage.getItem('userDirectory');
+            return cached ? JSON.parse(cached) as UserProfile[] : [];
+        } catch {
+            return [];
+        }
+    });
     const [searchQuery, setSearchQuery] = useState('');
     const [showProfile, setShowProfile] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
 
     // Resolve self id reliably even before user is fully loaded
     const selfId = useMemo(() => String(user?.id || localStorage.getItem('userId') || ''), [user]);
+
+    // Dispose object URL preview if any
+    useEffect(() => {
+        return () => {
+            if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+        };
+    }, [avatarPreview]);
 
     // Fetch profile and all users
     useEffect(() => {
@@ -59,6 +76,15 @@ export default function Dashboard() {
 
         initData();
     }, []);
+
+    // Persist directory cache when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('userDirectory', JSON.stringify(allUsers));
+        } catch {
+            // ignore quota/serialisation errors
+        }
+    }, [allUsers]);
 
     // Ensure sidebar partner names are always available: fetch missing partner profiles by id
     useEffect(() => {
@@ -87,7 +113,7 @@ export default function Dashboard() {
                         return Array.from(map.values());
                     });
                 }
-            } catch (e) {
+            } catch {
                 // silent fail; sidebar will fallback to 'Unknown'
             }
         };
@@ -95,6 +121,39 @@ export default function Dashboard() {
             ensurePartnerProfiles();
         }
     }, [conversations, allUsers, selfId]);
+
+    // Build WhatsApp-like chat list: one row per partner, showing the most recent conversation with them
+    const displayConversations = useMemo(() => {
+        const byPartner = new Map<string, typeof conversations[number]>();
+        for (const conv of conversations) {
+            // Prefer determining partner from the lastMessage to avoid unreliable participants payloads
+            const lm = conv.lastMessage;
+            let partnerId: string | null = null;
+            if (lm && lm.senderId && (lm.receiverId || lm.groupId)) {
+                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId || '') : String(lm.senderId);
+            } else if (conv.participants && conv.participants.length > 0) {
+                const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                partnerId = p ? String(p.id) : null;
+            }
+            if (!partnerId || partnerId === selfId) continue;
+
+            const existing = byPartner.get(partnerId);
+            if (!existing) {
+                byPartner.set(partnerId, conv);
+            } else {
+                const a = existing.lastMessage?.createdAt ? new Date(existing.lastMessage.createdAt).getTime() : 0;
+                const b = conv.lastMessage?.createdAt ? new Date(conv.lastMessage.createdAt).getTime() : 0;
+                if (b > a) byPartner.set(partnerId, conv);
+            }
+        }
+        const list = Array.from(byPartner.values());
+        list.sort((a, b) => {
+            const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+            const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+            return bt - at;
+        });
+        return list;
+    }, [conversations, selfId]);
 
     // Filter users based on search
     const filteredUsers = useMemo(() => {
@@ -169,8 +228,12 @@ export default function Dashboard() {
                 {/* User Info Header */}
                 <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/80">
                     <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setShowProfile(!showProfile)}>
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold shadow-lg shadow-blue-500/20">
-                            {profile?.fullName?.charAt(0) || <UserIcon className="h-5 w-5" />}
+                        <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold shadow-lg shadow-blue-500/20">
+                            {profile?.profilePic ? (
+                                <img src={profile.profilePic} alt="avatar" className="h-10 w-10 object-cover" />
+                            ) : (
+                                profile?.fullName?.charAt(0) || <UserIcon className="h-5 w-5" />
+                            )}
                         </div>
                         <div className="hidden sm:block">
                             <h2 className="text-sm font-bold truncate max-w-[120px]">{profile?.fullName}</h2>
@@ -209,11 +272,20 @@ export default function Dashboard() {
                             <button onClick={() => setShowUserSearch(true)} className="text-blue-500 hover:underline text-xs mt-2">Find users</button>
                         </div>
                     ) : (
-                        conversations.map((conv) => {
-                            const partner = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
-                            const partnerId = partner?.id || '';
-                            const partnerFromDirectory = allUsers.find(u => u.id === partnerId);
-                            const partnerName = partner?.fullName || partnerFromDirectory?.fullName || partnerFromDirectory?.email || 'Unknown';
+                        displayConversations.map((conv) => {
+                            // Resolve partner strictly from lastMessage when available
+                            const lm = conv.lastMessage;
+                            let partnerId: string | '' = '';
+                            if (lm && lm.senderId && (lm.receiverId || lm.groupId)) {
+                                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId || '') : String(lm.senderId);
+                            } else if (conv.participants && conv.participants.length > 0) {
+                                const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                                partnerId = p ? String(p.id) : '';
+                            }
+                            if (!partnerId || partnerId === selfId) return null;
+
+                            const partnerFromDirectory = allUsers.find(u => String(u.id) === partnerId);
+                            const partnerName = partnerFromDirectory?.fullName || partnerFromDirectory?.email || 'Unknown';
                             const isOnline = onlineUsers[partnerId] === 'online';
                             const isActive = activeChat === partnerId;
 
@@ -224,8 +296,14 @@ export default function Dashboard() {
                                     className={`p-4 flex items-center space-x-3 cursor-pointer transition-all relative ${isActive ? 'bg-blue-600/10 border-r-2 border-blue-500' : 'hover:bg-gray-800/50'}`}
                                 >
                                     <div className="relative shrink-0">
-                                        <div className="h-12 w-12 rounded-full bg-gray-800 flex items-center justify-center font-bold text-lg border border-gray-700">
-                                            {partnerName?.charAt(0)}
+                                        <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center font-bold text-lg border border-gray-700">
+                                            {(() => {
+                                                const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
+                                                if (partnerProfile?.profilePic) {
+                                                    return <img src={partnerProfile.profilePic} alt="avatar" className="h-12 w-12 object-cover" />
+                                                }
+                                                return partnerName?.charAt(0);
+                                            })()}
                                         </div>
                                         {isOnline && (
                                             <div className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-green-500 rounded-full border-2 border-gray-900 shadow-sm"></div>
@@ -263,8 +341,14 @@ export default function Dashboard() {
                         {/* Chat Header */}
                         <header className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/40 backdrop-blur-md sticky top-0 z-10 transition-all">
                             <div className="flex items-center space-x-3">
-                                <div className="h-10 w-10 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold border border-blue-500/20">
-                                    {otherUser?.fullName?.charAt(0)}
+                                <div className="h-10 w-10 rounded-full overflow-hidden bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold border border-blue-500/20">
+                                    {(() => {
+                                        const headerPartner = allUsers.find(u => String(u.id) === String(activeChat));
+                                        if (headerPartner?.profilePic) {
+                                            return <img src={headerPartner.profilePic} alt="avatar" className="h-10 w-10 object-cover" />
+                                        }
+                                        return otherUser?.fullName?.charAt(0);
+                                    })()}
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-sm">{otherUser?.fullName}</h3>
@@ -429,6 +513,72 @@ export default function Dashboard() {
                 )}
 
                 {/* Profile Slide-over (simplified) */}
+                {showProfile && (
+                    <div className="fixed inset-0 z-20 bg-black/50 flex justify-end" onClick={() => setShowProfile(false)}>
+                        <div className="w-80 h-full bg-gray-900 border-l border-gray-800 p-4" onClick={(e) => e.stopPropagation()}>
+                            <h3 className="text-sm font-bold mb-4">Profile</h3>
+                            <div className="flex items-center space-x-3 mb-4">
+                                <div className="h-14 w-14 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
+                                    {avatarPreview ? (
+                                        <img src={avatarPreview} alt="preview" className="h-14 w-14 object-cover" />
+                                    ) : profile?.profilePic ? (
+                                        <img src={profile.profilePic} alt="avatar" className="h-14 w-14 object-cover" />
+                                    ) : (
+                                        <span className="text-lg font-bold">{profile?.fullName?.charAt(0) || '?'}</span>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] || null;
+                                            setAvatarFile(file);
+                                            if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                                            setAvatarPreview(file ? URL.createObjectURL(file) : null);
+                                        }}
+                                        className="text-xs text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                disabled={!avatarFile || uploadingAvatar}
+                                onClick={async () => {
+                                    if (!avatarFile) return;
+                                    try {
+                                        setUploadingAvatar(true);
+                                        const fd = new FormData();
+                                        fd.append('profilePic', avatarFile);
+                                        const updated = await userService.updateProfile(fd);
+                                        setProfile(updated);
+                                        try { localStorage.setItem('profile', JSON.stringify(updated)); } catch (e) {
+                                            // ignore quota errors
+                                        }
+                                        setAvatarFile(null);
+                                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                                        setAvatarPreview(null);
+                                        toast.success('Profile picture updated');
+                                    } catch {
+                                        console.error('Avatar upload failed');
+                                        toast.error('Failed to update avatar');
+                                    } finally {
+                                        setUploadingAvatar(false);
+                                    }
+                                }}
+                                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold"
+                            >
+                                {uploadingAvatar ? 'Uploading...' : 'Update Picture'}
+                            </button>
+
+                            <div className="mt-6">
+                                <p className="text-xs text-gray-400">Name</p>
+                                <p className="text-sm text-gray-200 font-semibold">{profile?.fullName}</p>
+                                <p className="text-xs text-gray-400 mt-3">Email</p>
+                                <p className="text-sm text-gray-200 font-semibold break-all">{profile?.email}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {showProfile && (
                     <div className="absolute inset-y-0 right-0 w-80 bg-gray-900 border-l border-gray-800 z-50 shadow-2xl animate-in slide-in-from-right duration-300">
                         <div className="p-6 h-full flex flex-col">

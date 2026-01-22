@@ -40,16 +40,16 @@ export const privateChatSocket = (io: Server) => {
           },
         });
 
-        // Relay to recipient
-        const recipientSocket = io.to(payload.to);
-        recipientSocket.emit("message:receive", message);
+        // Relay to recipient (room is the recipient user id)
+        const recipientRoom = io.to(payload.to);
+        recipientRoom.emit("message:receive", message);
 
         // Notify sender as ack
         socket.emit("message:sent", { messageId: message.id, status: "SENT" });
 
-        // Check if recipient is online for immediate "DELIVERED" status
-        const isOnline = await redisClient.get(`user:presence:${payload.to}`);
-        if (isOnline === "online") {
+        // If recipient currently has any active socket in room, mark as DELIVERED immediately
+        const room = io.sockets.adapter.rooms.get(payload.to);
+        if (room && room.size > 0) {
           await (prisma.privateMessage as any).update({
             where: { id: message.id },
             data: { status: "DELIVERED" }

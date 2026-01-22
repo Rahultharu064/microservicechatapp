@@ -28,3 +28,12 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Prevent dev crashes on transient errors
+process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled promise rejection in Chat Service", reason as any);
+});
+
+process.on("uncaughtException", (err) => {
+    logger.error("Uncaught exception in Chat Service", err);
+});

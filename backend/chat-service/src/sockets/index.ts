@@ -21,7 +21,9 @@ export const initSockets = (io: Server) => {
     } catch (err: any) {
       if (err.name === "TokenExpiredError") {
         logger.error("Socket authentication failed: Token expired");
-        return next(new Error("Token expired. Please login again."));
+        const e: any = new Error("AUTH_EXPIRED");
+        e.name = "AUTH_EXPIRED";
+        return next(e);
       }
       logger.error("Socket authentication failed", err);
       next(new Error("Unauthorized"));
@@ -30,4 +32,14 @@ export const initSockets = (io: Server) => {
 
   privateChatSocket(io);
   groupChatSocket(io);
+
+  // Global connection diagnostics
+  io.on("connection", (socket) => {
+    socket.on("error", (err) => {
+      logger.warn("Socket error", { socketId: socket.id, message: (err as any)?.message });
+    });
+    socket.on("disconnect", (reason) => {
+      logger.info("User disconnected from private socket", { socketId: socket.id, reason });
+    });
+  });
 };
