@@ -76,19 +76,27 @@ export const getGroupMessages = async (req: Request, res: Response) => {
     const { limit = "50", offset = "0" } = req.query;
 
     const groupIdStr = groupId as string;
-    const messages = await prisma.groupMessage.findMany({
+    const messages = await (prisma.groupMessage as any).findMany({
       where: { groupId: groupIdStr },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            fullName: true,
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
       take: parseInt(limit as string),
       skip: parseInt(offset as string),
     });
 
-    const messageIds = messages.map(m => m.id);
+    const messageIds = messages.map((m: any) => m.id);
     const reactions = await (prisma as any).messageReaction.findMany({
       where: { messageId: { in: messageIds } }
     });
 
-    const messagesWithReactions = messages.map(m => ({
+    const messagesWithReactions = messages.map((m: any) => ({
       ...m,
       reactions: reactions.filter((r: any) => r.messageId === m.id)
     }));
@@ -148,10 +156,7 @@ export const getConversations = async (req: Request, res: Response) => {
 
     // Get all groups involving the user
     const memberships = await prisma.groupMember.findMany({
-      where: { userId },
-      include: {
-        // We'll need some last message info eventually, but for now let's just get the groups
-      }
+      where: { userId }
     });
 
     const groupIds = memberships.map(m => m.groupId);
@@ -161,7 +166,7 @@ export const getConversations = async (req: Request, res: Response) => {
 
     const lastGroupMessages = await Promise.all(
       groupIds.map(async (gid) => {
-        return prisma.groupMessage.findFirst({
+        return (prisma as any).groupMessage.findFirst({
           where: { groupId: gid },
           orderBy: { createdAt: 'desc' }
         });
@@ -247,7 +252,12 @@ export const getConversations = async (req: Request, res: Response) => {
                 const resp = await fetch(`${baseUrl}/users/${id}`);
                 if (!resp.ok) return null;
                 const data = await resp.json();
-                return { id: String(id), fullName: data.fullName || data.name || data.email || 'Unknown', profilePic: data.profilePic || undefined };
+                return {
+                  id: String(id),
+                  fullName: data.fullName || data.name || data.email || 'Unknown',
+                  profilePic: data.profilePic || undefined,
+                  lastSeen: data.lastSeen || undefined
+                };
               } catch {
                 return null;
               }
@@ -292,7 +302,7 @@ export const getConversations = async (req: Request, res: Response) => {
 export const getUnreadCount = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const count = await (prisma.privateMessage as any).count({
+    const count = await (prisma as any).privateMessage.count({
       where: {
         receiverId: userId,
         status: { not: "READ" }

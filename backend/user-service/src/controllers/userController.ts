@@ -44,7 +44,14 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
 
 export const getAllUsers = async (req: AuthRequest, res: Response) => {
   try {
-    const users = await userService.getAllUsers();
+    const { ids } = req.query;
+    let users;
+    if (typeof ids === "string") {
+      const idList = ids.split(",").filter(Boolean);
+      users = await userService.getAllUsers(idList);
+    } else {
+      users = await userService.getAllUsers();
+    }
     res.json(users);
   } catch (error) {
     logger.error("Error in getAllUsers:", error);

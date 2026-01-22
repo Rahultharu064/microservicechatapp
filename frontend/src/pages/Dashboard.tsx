@@ -426,7 +426,7 @@ export default function Dashboard() {
                             }
 
                             if (!partnerId) return null;
-                            const isOnline = !isGroup && onlineUsers[partnerId] === 'online';
+                            const isOnline = !isGroup && onlineUsers[partnerId]?.status === 'online';
                             const isActive = activeChat === partnerId;
 
                             return (
@@ -519,8 +519,22 @@ export default function Dashboard() {
                                                 <span className="text-blue-400 italic font-medium animate-pulse">typing...</span>
                                             ) : (
                                                 <div className="flex items-center">
-                                                    <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${onlineUsers[activeChat!] === 'online' ? 'bg-green-500' : 'bg-gray-600'}`}></span>
-                                                    <span className="text-gray-400">{onlineUsers[activeChat!] === 'online' ? 'Online' : 'Offline'}</span>
+                                                    <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${onlineUsers[activeChat!]?.status === 'online' ? 'bg-green-500' : 'bg-gray-600'}`}></span>
+                                                    <span className="text-gray-400">
+                                                        {onlineUsers[activeChat!]?.status === 'online' ? 'Online' : (() => {
+                                                            const lastSeen = onlineUsers[activeChat!]?.lastSeen;
+                                                            if (!lastSeen) return 'Offline';
+                                                            const date = new Date(lastSeen);
+                                                            const now = new Date();
+                                                            const isToday = date.toDateString() === now.toDateString();
+                                                            const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === date.toDateString();
+                                                            const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                                                            if (isToday) return `Last seen today at ${time}`;
+                                                            if (isYesterday) return `Last seen yesterday at ${time}`;
+                                                            return `Last seen on ${date.toLocaleDateString()}`;
+                                                        })()}
+                                                    </span>
                                                 </div>
                                             )
                                         )}
@@ -590,8 +604,13 @@ export default function Dashboard() {
                                 const isMe = String(msg.senderId) === String(user?.id);
 
                                 return (
-                                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
+                                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group mb-4 last:mb-0`}>
                                         <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                            {!isMe && activeConversation?.type === 'GROUP' && msg.sender && (
+                                                <span className="text-[10px] font-semibold text-blue-400 mb-1 ml-1">
+                                                    {msg.sender.fullName}
+                                                </span>
+                                            )}
                                             <div className={`rounded-2xl px-4 py-2.5 shadow-xl transition-all ${isMe
                                                 ? 'bg-blue-600 text-white rounded-tr-none'
                                                 : 'bg-gray-800 text-gray-100 rounded-tl-none border border-gray-700'
@@ -669,7 +688,7 @@ export default function Dashboard() {
                                                 </span>
                                                 {isMe && (
                                                     (() => {
-                                                        const isPartnerOnline = activeChat ? onlineUsers[activeChat] === 'online' : false;
+                                                        const isPartnerOnline = activeChat ? onlineUsers[activeChat]?.status === 'online' : false;
                                                         let ticks = '✓';
                                                         let color = 'text-gray-600';
                                                         const title = `Status: ${msg.status}`;

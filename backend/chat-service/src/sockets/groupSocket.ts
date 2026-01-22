@@ -52,8 +52,14 @@ export const groupChatSocket = (io: Server) => {
           },
         });
 
-        // Broadcast to group (including sender)
-        io.to(`group:${payload.groupId}`).emit("group:message:receive", msg);
+        // Broadcast to group (including sender) with sender details
+        io.to(`group:${payload.groupId}`).emit("group:message:receive", {
+          ...msg,
+          sender: {
+            id: user.id,
+            fullName: user.fullName || 'Unknown'
+          }
+        });
 
         // Fetch group members to notify (except sender)
         const members = await (prisma as any).groupMember.findMany({

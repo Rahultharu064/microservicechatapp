@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { privateChatSocket } from "./privateSocket.js";
 import { groupChatSocket } from "./groupSocket.js";
+import prisma from "../config/db.js";
 import logger from "../../../shared/src/logger/logger.js";
 
 export const initSockets = (io: Server) => {
@@ -35,11 +36,33 @@ export const initSockets = (io: Server) => {
 
   // Global connection diagnostics
   io.on("connection", (socket) => {
+    const user = (socket as any).user;
+
     socket.on("error", (err) => {
       logger.warn("Socket error", { socketId: socket.id, message: (err as any)?.message });
     });
-    socket.on("disconnect", (reason) => {
-      logger.info("User disconnected from private socket", { socketId: socket.id, reason });
+
+    socket.on("disconnect", async (reason) => {
+      logger.info("User disconnected", { userId: user?.id, socketId: socket.id, reason });
+
+      if (user?.id) {
+        try {
+          const now = new Date();
+          await (prisma.user as any).update({
+            where: { id: user.id },
+            data: { lastSeen: now }
+          });
+
+          // Broadcast offline status with lastSeen time
+          io.emit("user:status", {
+            userId: user.id,
+            status: "offline",
+            lastSeen: now
+          });
+        } catch (err) {
+          logger.error("Failed to update lastSeen on disconnect", err);
+        }
+      }
     });
   });
 };

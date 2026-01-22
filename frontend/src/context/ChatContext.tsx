@@ -19,7 +19,7 @@ interface ChatContextType {
     loadMore: () => Promise<void>;
     loadingMore: boolean;
     typingStatus: Record<string, boolean>;
-    onlineUsers: Record<string, string>;
+    onlineUsers: Record<string, { status: string; lastSeen?: string }>;
     connectionStatus: 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
     sendReaction: (messageId: string, emoji: string, action: 'add' | 'remove') => void;
     createGroup: (name: string, description?: string, isPublic?: boolean) => Promise<any>;
@@ -38,7 +38,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [hasMore, setHasMore] = useState<boolean>(true);
     const oldestCursorRef = useRef<string | null>(null); // Oldest loaded message ID
     const [typingStatus, setTypingStatus] = useState<Record<string, boolean>>({});
-    const [onlineUsers, setOnlineUsers] = useState<Record<string, string>>({});
+    const [onlineUsers, setOnlineUsers] = useState<Record<string, { status: string; lastSeen?: string }>>({});
     const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'reconnecting' | 'disconnected'>('disconnected');
     const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
@@ -109,8 +109,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setConnectionStatus('disconnected');
             });
 
-            newSocket.on("user:status", ({ userId, status }: { userId: string, status: string }) => {
-                setOnlineUsers(prev => ({ ...prev, [userId]: status }));
+            newSocket.on("user:status", ({ userId, status, lastSeen }: { userId: string, status: string, lastSeen?: string }) => {
+                setOnlineUsers(prev => ({ ...prev, [userId]: { status, lastSeen } }));
             });
 
             newSocket.on("message:receive", (message: Message) => {
@@ -286,16 +286,31 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [token, refreshToken]);
 
-    // Fetch initial conversations
     useEffect(() => {
         if (user) {
             chatService.getConversations()
-                .then(list => list.sort((a, b) => {
-                    const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
-                    const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
-                    return bt - at;
-                }))
-                .then(setConversations)
+                .then(list => {
+                    const sorted = list.sort((a, b) => {
+                        const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+                        const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+                        return bt - at;
+                    });
+
+                    // Initialize presence state with lastSeen data from participants
+                    const initialStatuses: Record<string, { status: string; lastSeen?: string }> = {};
+                    sorted.forEach(c => {
+                        c.participants.forEach(p => {
+                            if (p.id !== user.id) {
+                                initialStatuses[p.id] = {
+                                    status: 'offline',
+                                    lastSeen: (p as any).lastSeen
+                                };
+                            }
+                        });
+                    });
+                    setOnlineUsers(prev => ({ ...initialStatuses, ...prev }));
+                    setConversations(sorted);
+                })
                 .catch(console.error);
         }
     }, [user]);

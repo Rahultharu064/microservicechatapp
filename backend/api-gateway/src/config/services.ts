@@ -13,7 +13,7 @@ export const SERVICE_ROUTES = {
     },
     NOTIFICATIONS: {
         path: '/api/notifications',
-        rewrite: { '^/api/notifications': '/notifications' },
+        rewrite: { '^/api/notifications': '/api/notifications' },
     },
     MEDIA: {
         path: '/api/media',

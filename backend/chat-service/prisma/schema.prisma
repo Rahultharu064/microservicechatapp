@@ -56,7 +56,7 @@ model GroupMessage {
   keyVersion Int
   status     MessageStatus @default(SENT)
   createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  sender     user          @relation("GroupSender", fields: [senderId], references: [id])
 
   @@map("groupmessage")
 }
@@ -149,8 +149,10 @@ model user {
   status          user_status    @default(ACTIVE)
   isEmailVerified Boolean        @default(false)
   role            user_role      @default(USER)
+  lastSeen        DateTime?     @default(now())
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  groupMessages   GroupMessage[] @relation("GroupSender")
   refreshtoken    refreshtoken[]
 
   @@index([email])

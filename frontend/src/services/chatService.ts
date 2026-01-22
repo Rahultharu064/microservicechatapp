@@ -17,8 +17,12 @@ export interface Message {
     iv: string;
     senderPublicKey?: string;
     keyVersion?: number;
-    status: "SENT" | "DELIVERED" | "READ";
+    status: "SENT" | "DELIVERED" | "READ" | "DELETED";
     reactions?: Reaction[];
+    sender?: {
+        id: string;
+        fullName: string;
+    };
     createdAt: string;
 }
 

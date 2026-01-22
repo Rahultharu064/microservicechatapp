@@ -13,6 +13,9 @@ const publicPaths = [
     '/api/auth/verify-login',
     '/api/auth/forgot-password',
     '/api/auth/reset-password',
+    '/api/notifications/health',
+    '/api/chat/health',
+    '/api/users/health',
     '/socket.io',
 ];
 

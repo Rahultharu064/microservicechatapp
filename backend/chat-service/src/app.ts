@@ -26,6 +26,10 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors());
+app.get("/health", (req, res) => {
+    res.json({ service: "chat-service", status: "UP" });
+});
+
 app.use(express.json());
 
 // Routes
