@@ -31,7 +31,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!storedUser) return null;
         try { return JSON.parse(storedUser); } catch { return null; }
     });
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!localStorage.getItem("accessToken"));
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+        const token = localStorage.getItem("accessToken");
+        const userId = localStorage.getItem("userId");
+        return !!token && !!userId;
+    });
 
     const login = async (email: string) => {
         await authService.login(email);
@@ -43,12 +47,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem("accessToken", data.accessToken);
         localStorage.setItem("refreshToken", data.refreshToken);
 
-        // Assuming the backend returns user info in the response, we can set it here.
-        // If not, we might need to decode the token or fetch the profile.
-        if (data.user) {
-            setUser(data.user);
-            localStorage.setItem("user", JSON.stringify(data.user));
-            localStorage.setItem("userId", data.user.id);
+        // Map user data correctly if it's nested or direct
+        const userData = data.user || data.userData || null;
+        if (userData) {
+            setUser(userData);
+            localStorage.setItem("user", JSON.stringify(userData));
+            localStorage.setItem("userId", userData.id || userData.userId || "");
         }
 
         setToken(data.accessToken);

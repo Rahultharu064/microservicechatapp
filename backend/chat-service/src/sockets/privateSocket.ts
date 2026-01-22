@@ -125,11 +125,113 @@ export const privateChatSocket = (io: Server) => {
       }
     });
 
+    // Handle reactions
+    socket.on("message:reaction", async (payload: { messageId: string, emoji: string, action: 'add' | 'remove', to: string }) => {
+      try {
+        if (payload.action === 'add') {
+          await (prisma as any).messageReaction.upsert({
+            where: {
+              messageId_userId_emoji: {
+                messageId: payload.messageId,
+                userId: user.id,
+                emoji: payload.emoji
+              }
+            },
+            create: {
+              messageId: payload.messageId,
+              userId: user.id,
+              emoji: payload.emoji
+            },
+            update: {}
+          });
+        } else {
+          await (prisma as any).messageReaction.delete({
+            where: {
+              messageId_userId_emoji: {
+                messageId: payload.messageId,
+                userId: user.id,
+                emoji: payload.emoji
+              }
+            }
+          });
+        }
+
+        // Broadcast reaction to both parties
+        const reactionEvent = {
+          messageId: payload.messageId,
+          userId: user.id,
+          emoji: payload.emoji,
+          action: payload.action
+        };
+        io.to(payload.to).emit("message:reaction", reactionEvent);
+        socket.emit("message:reaction", reactionEvent);
+
+        logger.info(`Reaction ${payload.action}ed`, { from: user.id, messageId: payload.messageId, emoji: payload.emoji });
+      } catch (err) {
+        logger.error("Failed to handle reaction", err);
+      }
+    });
+
     socket.on("disconnect", async () => {
       await redisClient.set(`user:presence:${user.id}`, "offline");
       await redisClient.set(`user:lastSeen:${user.id}`, new Date().toISOString());
       io.emit("user:status", { userId: user.id, status: "offline", lastSeen: new Date() });
       logger.info("User disconnected from private socket", { userId: user.id });
     });
+
+    // Handle message edit
+    socket.on("message:edit", async (payload: { messageId: string, cipherText: string, iv: string, to: string }) => {
+      try {
+        const message = await (prisma.privateMessage as any).update({
+          where: { id: payload.messageId, senderId: user.id },
+          data: {
+            cipherText: payload.cipherText,
+            iv: payload.iv
+          }
+        });
+
+        const updateEvent = {
+          messageId: message.id,
+          cipherText: message.cipherText,
+          iv: message.iv,
+          updatedAt: (message as any).updatedAt
+        };
+
+        io.to(payload.to).emit("message:edit", updateEvent);
+        socket.emit("message:edit", updateEvent);
+
+        logger.info("Private message edited", { userId: user.id, messageId: message.id });
+      } catch (err) {
+        logger.error("Failed to edit private message", err);
+      }
+    });
+
+    // Handle message delete
+    socket.on("message:delete", async (payload: { messageId: string, to: string }) => {
+      try {
+        // Soft delete: update status to DELETED and clear content
+        const message = await (prisma.privateMessage as any).update({
+          where: { id: payload.messageId, senderId: user.id },
+          data: {
+            status: "DELETED",
+            cipherText: "MESSAGE_DELETED",
+            iv: "DELETED"
+          }
+        });
+
+        const deleteEvent = {
+          messageId: message.id,
+          status: "DELETED"
+        };
+
+        io.to(payload.to).emit("message:delete", deleteEvent);
+        socket.emit("message:delete", deleteEvent);
+
+        logger.info("Private message deleted", { userId: user.id, messageId: message.id });
+      } catch (err) {
+        logger.error("Failed to delete private message", err);
+      }
+    });
   });
 };
+

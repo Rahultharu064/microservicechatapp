@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import messageRoutes from "./routes/messageRoute.ts";
+import groupRoutes from "./routes/groupRoute.ts";
 import attachmentRoutes from "./routes/attachmentRoute.ts";
 // import fileRoutes from "./routes/fileRoute.ts";
 import { initSockets } from "./sockets/index.ts";
@@ -29,6 +30,7 @@ app.use(express.json());
 
 // Routes
 app.use("/api/messages", messageRoutes);
+app.use("/api/groups", groupRoutes);
 app.use("/api/attachments", attachmentRoutes);
 
 // Socket handlers

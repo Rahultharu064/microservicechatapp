@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
 import { ChatProvider } from './context/ChatContext.tsx'
+import { NotificationProvider } from './context/NotificationContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <ChatProvider>
-        <App />
-      </ChatProvider>
+      <NotificationProvider>
+        <ChatProvider>
+          <App />
+        </ChatProvider>
+      </NotificationProvider>
     </AuthProvider>
   </StrictMode>,
 )

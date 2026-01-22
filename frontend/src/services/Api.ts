@@ -38,26 +38,36 @@ api.interceptors.response.use(
             try {
                 const refreshToken = localStorage.getItem('refreshToken');
                 const userId = localStorage.getItem('userId') || '';
-                if (refreshToken) {
-                    const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { userId, refreshToken });
 
-                    const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
-
-                    localStorage.setItem('accessToken', accessToken);
-                    localStorage.setItem('refreshToken', newRefreshToken);
-
-                    // Retry the original request with new token
-                    if (originalRequest.headers) {
-                        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-                    }
-
-                    return api(originalRequest as InternalAxiosRequestConfig);
+                if (!refreshToken || !userId) {
+                    // No refresh token available, clear everything and redirect
+                    throw new Error('No refresh token available');
                 }
+
+                const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { userId, refreshToken });
+
+                const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+
+                localStorage.setItem('accessToken', accessToken);
+                localStorage.setItem('refreshToken', newRefreshToken);
+
+                // Retry the original request with new token
+                if (originalRequest.headers) {
+                    originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+                }
+
+                return api(originalRequest as InternalAxiosRequestConfig);
             } catch (refreshError) {
-                // Refresh failed, logout user
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                // Refresh failed, clear all auth data and redirect to login
+                console.error('Token refresh failed, logging out...', refreshError);
+                localStorage.clear();
+                sessionStorage.clear();
+
+                // Only redirect if not already on login page
+                if (!window.location.pathname.includes('/login')) {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(refreshError);
             }
         }
 

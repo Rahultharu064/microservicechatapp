@@ -73,7 +73,15 @@ export const verifyLogin = async (req: Request, res: Response) => {
   }
 
   const tokens = await generateTokens(user.id);
-  res.json(tokens);
+  res.json({
+    ...tokens,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      profilePic: user.profilePic
+    }
+  });
 };
 
 export const refreshToken = async (req: Request, res: Response) => {

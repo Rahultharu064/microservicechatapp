@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum MessageStatus {
-  SENT
-  DELIVERED
-  READ
-}
-
 model PrivateMessage {
   id              String        @id @default(uuid())
   senderId        String
@@ -21,8 +15,8 @@ model PrivateMessage {
   iv              String
   senderPublicKey String
   burnAfterRead   Boolean       @default(false)
-  status          MessageStatus @default(SENT)
   createdAt       DateTime      @default(now())
+  status          MessageStatus @default(SENT)
   updatedAt       DateTime      @updatedAt
 
   @@index([senderId, receiverId])
@@ -30,43 +24,49 @@ model PrivateMessage {
 }
 
 model Group {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  name        String
+  createdAt   DateTime @default(now())
+  description String?
+  inviteCode  String   @unique @default(uuid())
+  isPublic    Boolean  @default(false)
 
   @@map("group")
 }
 
 model GroupMember {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   groupId           String
   userId            String
-  encryptedGroupKey String   @db.LongText
+  encryptedGroupKey String    @db.LongText
   keyVersion        Int
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
+  role              GroupRole @default(MEMBER)
 
   @@unique([groupId, userId])
   @@map("groupmember")
 }
 
 model GroupMessage {
-  id         String   @id @default(uuid())
+  id         String        @id @default(uuid())
   groupId    String
   senderId   String
-  cipherText String   @db.LongText
+  cipherText String        @db.LongText
   iv         String
   keyVersion Int
-  createdAt  DateTime @default(now())
+  status     MessageStatus @default(SENT)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
   @@map("groupmessage")
 }
 
 model MessageReceipt {
-  id        String   @id @default(uuid())
+  id        String        @id @default(uuid())
   messageId String
   userId    String
   status    MessageStatus @default(READ)
-  readAt    DateTime @default(now())
+  readAt    DateTime      @default(now())
 
   @@unique([messageId, userId])
   @@map("messagereceipt")
@@ -86,12 +86,12 @@ model EncryptedFile {
 model MessageAttachment {
   id          String   @id @default(uuid())
   messageId   String
-  messageType String   // 'private' or 'group'
-  mediaId     String   // Reference to Media Service
-  mediaType   String   // 'image', 'file', 'voice', 'video'
-  mediaUrl    String   // URL to Media Service endpoint
-  thumbnail   String?  // Thumbnail URL for images/videos
-  metadata    String?  @db.Text // JSON metadata (duration for voice, size, etc.)
+  messageType String
+  mediaId     String
+  mediaType   String
+  mediaUrl    String
+  thumbnail   String?
+  metadata    String?  @db.Text
   createdAt   DateTime @default(now())
 
   @@index([messageId])
@@ -99,8 +99,16 @@ model MessageAttachment {
   @@map("messageattachment")
 }
 
-// RESTORED INTROSPECTED MODELS TO PROTECT OTHER SERVICES TABLES
-// These are managed by auth-service and user-service
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@map("messagereaction")
+}
 
 model loginaudit {
   id        String   @id @default(uuid())
@@ -147,6 +155,19 @@ model user {
 
   @@index([email])
   @@map("user")
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  DELETED
+}
+
+enum GroupRole {
+  ADMIN
+  MODERATOR
+  MEMBER
 }
 
 enum user_provider {

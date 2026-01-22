@@ -53,7 +53,17 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
       });
     }
 
-    res.json(messages.reverse());
+    const messageIds = messages.map(m => m.id);
+    const reactions = await (prisma as any).messageReaction.findMany({
+      where: { messageId: { in: messageIds } }
+    });
+
+    const messagesWithReactions = messages.map(m => ({
+      ...m,
+      reactions: reactions.filter((r: any) => r.messageId === m.id)
+    }));
+
+    res.json(messagesWithReactions.reverse());
   } catch (err) {
     logger.error("Failed to fetch private messages", err);
     res.status(500).json({ error: "Internal server error" });
@@ -73,7 +83,17 @@ export const getGroupMessages = async (req: Request, res: Response) => {
       skip: parseInt(offset as string),
     });
 
-    res.json(messages.reverse());
+    const messageIds = messages.map(m => m.id);
+    const reactions = await (prisma as any).messageReaction.findMany({
+      where: { messageId: { in: messageIds } }
+    });
+
+    const messagesWithReactions = messages.map(m => ({
+      ...m,
+      reactions: reactions.filter((r: any) => r.messageId === m.id)
+    }));
+
+    res.json(messagesWithReactions.reverse());
   } catch (err) {
     logger.error("Failed to fetch group messages", err);
     res.status(500).json({ error: "Internal server error" });
@@ -126,19 +146,59 @@ export const getConversations = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
+    // Get all groups involving the user
+    const memberships = await prisma.groupMember.findMany({
+      where: { userId },
+      include: {
+        // We'll need some last message info eventually, but for now let's just get the groups
+      }
+    });
+
+    const groupIds = memberships.map(m => m.groupId);
+    const groups = await (prisma as any).group.findMany({
+      where: { id: { in: groupIds } }
+    });
+
+    const lastGroupMessages = await Promise.all(
+      groupIds.map(async (gid) => {
+        return prisma.groupMessage.findFirst({
+          where: { groupId: gid },
+          orderBy: { createdAt: 'desc' }
+        });
+      })
+    );
+
     const conversationMap = new Map();
 
+    // Add private conversations
     for (const msg of messages) {
       const partnerId = msg.senderId === userId ? msg.receiverId : msg.senderId;
 
       if (!conversationMap.has(partnerId)) {
         conversationMap.set(partnerId, {
-          id: partnerId, // Using partnerId as conversation id for simplicity
-          participants: [{ id: userId }, { id: partnerId }], // Needs full user details from User service ideally
+          id: partnerId,
+          type: 'PRIVATE',
+          participants: [{ id: userId }, { id: partnerId }],
           lastMessage: msg,
-          unreadCount: 0 // Simplified
+          unreadCount: 0
         });
       }
+    }
+
+    // Add groups
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      const lastMsg = lastGroupMessages[i];
+      conversationMap.set(g.id, {
+        id: g.id,
+        type: 'GROUP',
+        name: g.name,
+        description: g.description,
+        inviteCode: g.inviteCode,
+        participants: [], // Will be filled or managed by frontend
+        lastMessage: lastMsg,
+        unreadCount: 0
+      });
     }
 
     let conversations = Array.from(conversationMap.values());

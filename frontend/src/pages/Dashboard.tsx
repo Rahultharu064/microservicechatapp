@@ -4,10 +4,12 @@ import { useChat } from "../context/ChatContext";
 import userService, { type UserProfile } from "../services/userService";
 import {
     LogOut, User as UserIcon, UserPlus, Shield,
-    Send, Search, Plus, X, Settings
+    Send, Search, Plus, X, Settings, Pencil, Trash2,
+    Users, Link as LinkIcon, Copy
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { decryptMessage } from "../utils/encryption";
+import { useNotifications } from "../context/NotificationContext";
 
 export default function Dashboard() {
     const { logout, user } = useAuth();
@@ -21,14 +23,36 @@ export default function Dashboard() {
         onlineUsers,
         connectionStatus,
         loadMore,
-        loadingMore
+        loadingMore,
+        sendReaction,
+        createGroup,
+        joinGroup,
+        editMessage,
+        deleteMessage
     } = useChat();
 
+    const {
+        notifications,
+        unreadCount: globalUnreadCount,
+        markAsRead
+    } = useNotifications();
+
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
     const [decryptedMessages, setDecryptedMessages] = useState<Record<string, string>>({});
     const [showUserSearch, setShowUserSearch] = useState(false);
+    const [showCreateGroup, setShowCreateGroup] = useState(false);
+    const [showJoinGroup, setShowJoinGroup] = useState(false);
+    const [groupName, setGroupName] = useState('');
+    const [groupDesc, setGroupDesc] = useState('');
+    const [isPublic, setIsPublic] = useState(false);
+    const [inviteCode, setInviteCode] = useState('');
+
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState('');
+
     const [allUsers, setAllUsers] = useState<UserProfile[]>(() => {
         try {
             const cached = localStorage.getItem('userDirectory');
@@ -59,6 +83,14 @@ export default function Dashboard() {
     // Fetch profile and all users
     useEffect(() => {
         const initData = async () => {
+            // Early check: if no access token, don't try to fetch data
+            const accessToken = localStorage.getItem('accessToken');
+            if (!accessToken) {
+                console.log('No access token found, skipping data fetch');
+                setLoading(false);
+                return;
+            }
+
             try {
                 const [profileData, usersData] = await Promise.all([
                     userService.getProfile(),
@@ -68,7 +100,10 @@ export default function Dashboard() {
                 setAllUsers(usersData);
             } catch (error) {
                 console.error("Failed to fetch initial data", error);
-                toast.error("Could not load dashboard data.");
+                // Don't show error toast if it's an auth error (will be handled by interceptor)
+                if (!(error as any)?.message?.includes('No refresh token')) {
+                    toast.error("Could not load dashboard data.");
+                }
             } finally {
                 setLoading(false);
             }
@@ -125,12 +160,19 @@ export default function Dashboard() {
     // Build WhatsApp-like chat list: one row per partner, showing the most recent conversation with them
     const displayConversations = useMemo(() => {
         const byPartner = new Map<string, typeof conversations[number]>();
+        const groups: typeof conversations = [];
+
         for (const conv of conversations) {
-            // Prefer determining partner from the lastMessage to avoid unreliable participants payloads
+            if (conv.type === 'GROUP') {
+                groups.push(conv);
+                continue;
+            }
+
+            // Private conversation logic
             const lm = conv.lastMessage;
             let partnerId: string | null = null;
-            if (lm && lm.senderId && (lm.receiverId || lm.groupId)) {
-                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId || '') : String(lm.senderId);
+            if (lm && lm.senderId && lm.receiverId) {
+                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId) : String(lm.senderId);
             } else if (conv.participants && conv.participants.length > 0) {
                 const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
                 partnerId = p ? String(p.id) : null;
@@ -146,13 +188,12 @@ export default function Dashboard() {
                 if (b > a) byPartner.set(partnerId, conv);
             }
         }
-        const list = Array.from(byPartner.values());
-        list.sort((a, b) => {
+        const list = [...Array.from(byPartner.values()), ...groups];
+        return list.sort((a, b) => {
             const at = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
             const bt = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
             return bt - at;
         });
-        return list;
     }, [conversations, selfId]);
 
     // Filter users based on search
@@ -202,6 +243,31 @@ export default function Dashboard() {
         }
     };
 
+    const handleCreateGroup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!groupName.trim()) return;
+        try {
+            await createGroup(groupName, groupDesc, isPublic);
+            setShowCreateGroup(false);
+            setGroupName('');
+            setGroupDesc('');
+        } catch (error) {
+            // Toast handled in context
+        }
+    };
+
+    const handleJoinGroup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inviteCode.trim()) return;
+        try {
+            await joinGroup(inviteCode);
+            setShowJoinGroup(false);
+            setInviteCode('');
+        } catch (error) {
+            // Toast handled in context
+        }
+    };
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || !activeChat) return;
@@ -218,7 +284,10 @@ export default function Dashboard() {
         );
     }
 
-    const activeConversation = conversations.find(c => c.participants.some(p => String(p.id) === String(activeChat)));
+    const activeConversation = conversations.find(c =>
+        String(c.id) === String(activeChat) ||
+        c.participants.some(p => String(p.id) === String(activeChat))
+    );
     const otherUser = activeConversation?.participants.find(p => String(p.id) === String(activeChat)) || allUsers.find(u => String(u.id) === String(activeChat));
 
     return (
@@ -244,6 +313,51 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="flex items-center space-x-1">
+                        {/* Notification Bell */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                                className={`p-2 hover:bg-gray-800 rounded-lg transition-colors relative ${isNotificationOpen ? 'text-blue-400 bg-gray-800' : 'text-gray-400'}`}
+                                title="Notifications"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                                {globalUnreadCount > 0 && (
+                                    <span className="absolute top-1 right-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full border border-gray-900">
+                                        {globalUnreadCount}
+                                    </span>
+                                )}
+                            </button>
+
+                            {isNotificationOpen && (
+                                <div className="absolute right-0 mt-2 w-64 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                    <div className="p-3 border-b border-gray-800 font-bold text-xs text-white">Notifications</div>
+                                    <div className="max-h-60 overflow-y-auto">
+                                        {notifications.length === 0 ? (
+                                            <div className="p-4 text-center text-gray-500 text-xs">No notifications</div>
+                                        ) : (
+                                            notifications.map(n => (
+                                                <div
+                                                    key={n.id}
+                                                    onClick={() => {
+                                                        markAsRead(n.id);
+                                                        setIsNotificationOpen(false);
+                                                    }}
+                                                    className={`p-3 border-b border-gray-800 cursor-pointer hover:bg-gray-800 transition-colors ${!n.isRead ? 'bg-blue-600/5 border-l-2 border-blue-500' : ''}`}
+                                                >
+                                                    <div className="flex justify-between items-start mb-0.5">
+                                                        <span className="font-semibold text-[11px] text-gray-200">{n.title}</span>
+                                                        <span className="text-[9px] text-gray-500">{new Date(n.createdAt).toLocaleDateString()}</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-gray-400 line-clamp-2">{n.body}</p>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                         <button className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 transition-colors" title="Settings">
                             <Settings className="h-4 w-4" />
                         </button>
@@ -254,14 +368,30 @@ export default function Dashboard() {
                 </div>
 
                 {/* Search / New Chat */}
-                <div className="p-4">
+                <div className="p-4 space-y-2">
                     <button
                         onClick={() => setShowUserSearch(true)}
                         className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 py-2.5 rounded-xl transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98]"
                     >
-                        <Plus className="h-4 w-4" />
-                        <span className="text-sm font-semibold">Start New Chat</span>
+                        <UserPlus className="h-4 w-4" />
+                        <span className="text-sm font-semibold">New Contact</span>
                     </button>
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => setShowCreateGroup(true)}
+                            className="flex-1 flex items-center justify-center space-x-2 bg-gray-800 hover:bg-gray-700 py-2 rounded-xl transition-all border border-gray-700 active:scale-[0.98]"
+                        >
+                            <Users className="h-4 w-4" />
+                            <span className="text-xs font-semibold">Create Group</span>
+                        </button>
+                        <button
+                            onClick={() => setShowJoinGroup(true)}
+                            className="flex-1 flex items-center justify-center space-x-2 bg-gray-800 hover:bg-gray-700 py-2 rounded-xl transition-all border border-gray-700 active:scale-[0.98]"
+                        >
+                            <LinkIcon className="h-4 w-4" />
+                            <span className="text-xs font-semibold">Join Group</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Conversations List */}
@@ -273,45 +403,56 @@ export default function Dashboard() {
                         </div>
                     ) : (
                         displayConversations.map((conv) => {
-                            // Resolve partner strictly from lastMessage when available
-                            const lm = conv.lastMessage;
-                            let partnerId: string | '' = '';
-                            if (lm && lm.senderId && (lm.receiverId || lm.groupId)) {
-                                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId || '') : String(lm.senderId);
-                            } else if (conv.participants && conv.participants.length > 0) {
-                                const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
-                                partnerId = p ? String(p.id) : '';
-                            }
-                            if (!partnerId || partnerId === selfId) return null;
+                            const isGroup = conv.type === 'GROUP';
+                            let partnerId: string | null = null;
+                            let displayName = '';
+                            let displayPic: string | undefined = undefined;
 
-                            const partnerFromDirectory = allUsers.find(u => String(u.id) === partnerId);
-                            const partnerName = partnerFromDirectory?.fullName || partnerFromDirectory?.email || 'Unknown';
-                            const isOnline = onlineUsers[partnerId] === 'online';
+                            if (isGroup) {
+                                partnerId = conv.id;
+                                displayName = conv.name || 'Group';
+                            } else {
+                                // Resolve partner for private chats
+                                const lm = conv.lastMessage;
+                                if (lm && lm.senderId && lm.receiverId) {
+                                    partnerId = String(lm.senderId) === selfId ? String(lm.receiverId) : String(lm.senderId);
+                                } else if (conv.participants && conv.participants.length > 0) {
+                                    const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                                    partnerId = p ? String(p.id) : null;
+                                }
+                                const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
+                                displayName = partnerProfile?.fullName || partnerProfile?.email || 'Unknown';
+                                displayPic = partnerProfile?.profilePic || undefined;
+                            }
+
+                            if (!partnerId) return null;
+                            const isOnline = !isGroup && onlineUsers[partnerId] === 'online';
                             const isActive = activeChat === partnerId;
 
                             return (
                                 <div
                                     key={conv.id}
-                                    onClick={() => setActiveChat(partnerId || null)}
+                                    onClick={() => setActiveChat(partnerId)}
                                     className={`p-4 flex items-center space-x-3 cursor-pointer transition-all relative ${isActive ? 'bg-blue-600/10 border-r-2 border-blue-500' : 'hover:bg-gray-800/50'}`}
                                 >
                                     <div className="relative shrink-0">
-                                        <div className="h-12 w-12 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center font-bold text-lg border border-gray-700">
-                                            {(() => {
-                                                const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
-                                                if (partnerProfile?.profilePic) {
-                                                    return <img src={partnerProfile.profilePic} alt="avatar" className="h-12 w-12 object-cover" />
-                                                }
-                                                return partnerName?.charAt(0);
-                                            })()}
+                                        <div className={`h-12 w-12 rounded-full overflow-hidden flex items-center justify-center font-bold text-lg border ${isActive ? 'border-blue-500' : 'border-gray-700'} ${isGroup ? 'bg-indigo-600/20 text-indigo-400' : 'bg-gray-800'}`}>
+                                            {displayPic ? (
+                                                <img src={displayPic} alt="avatar" className="h-12 w-12 object-cover" />
+                                            ) : (
+                                                displayName?.charAt(0)
+                                            )}
                                         </div>
                                         {isOnline && (
                                             <div className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-green-500 rounded-full border-2 border-gray-900 shadow-sm"></div>
                                         )}
+                                        {isGroup && (
+                                            <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-[8px] font-black px-1 rounded border border-gray-900">GRP</div>
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-baseline mb-0.5">
-                                            <h4 className={`font-semibold truncate text-sm ${isActive ? 'text-blue-400' : 'text-gray-200'}`}>{partnerName}</h4>
+                                            <h4 className={`font-semibold truncate text-sm ${isActive ? 'text-blue-400' : 'text-gray-200'}`}>{displayName}</h4>
                                             {conv.lastMessage && (
                                                 <span className="text-[10px] text-gray-500">
                                                     {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -319,7 +460,7 @@ export default function Dashboard() {
                                             )}
                                         </div>
                                         <p className="text-xs text-gray-400 truncate">
-                                            {conv.lastMessage ? (decryptedMessages[conv.lastMessage.id] || '...') : 'Start chatting'}
+                                            {conv.lastMessage ? (decryptedMessages[conv.lastMessage.id] || '...') : 'No messages yet'}
                                         </p>
                                     </div>
                                     {conv.unreadCount > 0 && (
@@ -341,25 +482,47 @@ export default function Dashboard() {
                         {/* Chat Header */}
                         <header className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/40 backdrop-blur-md sticky top-0 z-10 transition-all">
                             <div className="flex items-center space-x-3">
-                                <div className="h-10 w-10 rounded-full overflow-hidden bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold border border-blue-500/20">
-                                    {(() => {
-                                        const headerPartner = allUsers.find(u => String(u.id) === String(activeChat));
-                                        if (headerPartner?.profilePic) {
-                                            return <img src={headerPartner.profilePic} alt="avatar" className="h-10 w-10 object-cover" />
-                                        }
-                                        return otherUser?.fullName?.charAt(0);
-                                    })()}
+                                <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg border border-white/10">
+                                    {activeConversation?.name?.charAt(0) || otherUser?.fullName?.charAt(0) || '?'}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-sm">{otherUser?.fullName}</h3>
+                                    <h3 className="font-bold text-sm text-white flex items-center">
+                                        {activeConversation?.name || otherUser?.fullName}
+                                        {activeConversation?.type === 'GROUP' && (
+                                            <span className="ml-2 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] rounded border border-blue-500/30 uppercase tracking-tighter font-black">Group</span>
+                                        )}
+                                    </h3>
                                     <div className="flex items-center text-[10px]">
-                                        {typingStatus[activeChat] ? (
-                                            <span className="text-blue-400 italic font-medium animate-pulse">typing...</span>
-                                        ) : (
-                                            <div className="flex items-center">
-                                                <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${onlineUsers[activeChat] === 'online' ? 'bg-green-500' : 'bg-gray-600'}`}></span>
-                                                <span className="text-gray-400">{onlineUsers[activeChat] === 'online' ? 'Online' : 'Offline'}</span>
+                                        {activeConversation?.type === 'GROUP' ? (
+                                            <div className="flex items-center space-x-2">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 mr-1"></span>
+                                                {activeConversation.inviteCode && (
+                                                    <span className="text-gray-400 cursor-pointer hover:text-blue-400 flex items-center transition-all bg-gray-800/50 px-2 py-0.5 rounded-md border border-gray-700/50 hover:border-blue-500/30" onClick={() => {
+                                                        navigator.clipboard.writeText(activeConversation.inviteCode!);
+                                                        toast.success("Invite code copied!", {
+                                                            icon: '📋',
+                                                            style: {
+                                                                borderRadius: '10px',
+                                                                background: '#1f2937',
+                                                                color: '#fff',
+                                                            },
+                                                        });
+                                                    }}>
+                                                        <span className="mr-1.5 opacity-60">Invite:</span>
+                                                        <span className="font-mono text-[9px]">{activeConversation.inviteCode}</span>
+                                                        <Copy className="h-2.5 w-2.5 ml-2 text-blue-400" />
+                                                    </span>
+                                                )}
                                             </div>
+                                        ) : (
+                                            typingStatus[activeChat!] ? (
+                                                <span className="text-blue-400 italic font-medium animate-pulse">typing...</span>
+                                            ) : (
+                                                <div className="flex items-center">
+                                                    <span className={`h-1.5 w-1.5 rounded-full mr-1.5 ${onlineUsers[activeChat!] === 'online' ? 'bg-green-500' : 'bg-gray-600'}`}></span>
+                                                    <span className="text-gray-400">{onlineUsers[activeChat!] === 'online' ? 'Online' : 'Offline'}</span>
+                                                </div>
+                                            )
                                         )}
                                     </div>
                                 </div>
@@ -433,11 +596,74 @@ export default function Dashboard() {
                                                 ? 'bg-blue-600 text-white rounded-tr-none'
                                                 : 'bg-gray-800 text-gray-100 rounded-tl-none border border-gray-700'
                                                 }`}>
-                                                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                                                    {decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>}
-                                                </p>
+                                                {editingMessageId === msg.id ? (
+                                                    <div className="flex items-center space-x-2 w-full min-w-[200px]">
+                                                        <input
+                                                            type="text"
+                                                            value={editValue}
+                                                            onChange={(e) => setEditValue(e.target.value)}
+                                                            className="flex-1 bg-gray-900 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-white"
+                                                            autoFocus
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && editValue.trim()) {
+                                                                    editMessage(msg.id, editValue);
+                                                                    setEditingMessageId(null);
+                                                                } else if (e.key === 'Escape') {
+                                                                    setEditingMessageId(null);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <button
+                                                            onClick={() => { if (editValue.trim()) editMessage(msg.id, editValue); setEditingMessageId(null); }}
+                                                            className="text-blue-400 text-xs font-bold hover:text-blue-300"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingMessageId(null)}
+                                                            className="text-gray-400 text-xs font-bold hover:text-gray-300"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                                        {msg.status === 'DELETED' ? (
+                                                            <span className="italic opacity-50 flex items-center gap-1.5">
+                                                                <Trash2 size={12} className="opacity-50" /> Message deleted
+                                                            </span>
+                                                        ) : (
+                                                            decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>
+                                                        )}
+                                                    </p>
+                                                )}
                                             </div>
                                             <div className="flex items-center mt-1 space-x-2 opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                                                {isMe && msg.status !== 'DELETED' && !editingMessageId && (
+                                                    <div className="flex items-center space-x-1 mr-2 bg-gray-800/50 rounded-lg px-1 py-0.5 border border-gray-700/50">
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingMessageId(msg.id);
+                                                                setEditValue(decryptedMessages[msg.id] || '');
+                                                            }}
+                                                            className="p-1 hover:bg-gray-700 rounded text-blue-400 transition-colors"
+                                                            title="Edit Message"
+                                                        >
+                                                            <Pencil size={11} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (window.confirm('Delete this message for everyone?')) {
+                                                                    deleteMessage(msg.id);
+                                                                }
+                                                            }}
+                                                            className="p-1 hover:bg-gray-700 rounded text-red-400 transition-colors"
+                                                            title="Delete Message"
+                                                        >
+                                                            <Trash2 size={11} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 <span className="text-[9px] text-gray-500">
                                                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
@@ -463,7 +689,39 @@ export default function Dashboard() {
                                                         );
                                                     })()
                                                 )}
+                                                <div className="flex items-center space-x-1 ml-2">
+                                                    {['👍', '❤️', '😂', '😮', '😢', '🔥'].map(emoji => (
+                                                        <button
+                                                            key={emoji}
+                                                            onClick={() => sendReaction(msg.id, emoji, 'add')}
+                                                            className="hover:scale-125 transition-transform p-0.5"
+                                                        >
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
+
+                                            {/* Reaction Display */}
+                                            {msg.reactions && msg.reactions.length > 0 && (
+                                                <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                    {Object.entries(
+                                                        msg.reactions.reduce((acc, r) => {
+                                                            acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                                            return acc;
+                                                        }, {} as Record<string, number>)
+                                                    ).map(([emoji, count]) => (
+                                                        <div
+                                                            key={emoji}
+                                                            onClick={() => sendReaction(msg.id, emoji, 'remove')}
+                                                            className="bg-gray-800/80 border border-gray-700/50 rounded-full px-1.5 py-0.5 text-[10px] flex items-center space-x-1 cursor-pointer hover:bg-gray-700 transition-colors"
+                                                        >
+                                                            <span>{emoji}</span>
+                                                            <span className="text-gray-400 font-bold">{count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -531,6 +789,8 @@ export default function Dashboard() {
                                     <input
                                         type="file"
                                         accept="image/*"
+                                        title="Change profile picture"
+                                        aria-label="Upload profile picture"
                                         onChange={(e) => {
                                             const file = e.target.files?.[0] || null;
                                             setAvatarFile(file);
@@ -689,6 +949,94 @@ export default function Dashboard() {
                     </div>
                 )
             }
+
+            {/* Create Group Modal */}
+            {showCreateGroup && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                    <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                            <h3 className="text-xl font-bold">Create New Group</h3>
+                            <button onClick={() => setShowCreateGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleCreateGroup} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Group Name</label>
+                                <input
+                                    type="text"
+                                    value={groupName}
+                                    onChange={(e) => setGroupName(e.target.value)}
+                                    placeholder="Enter group name..."
+                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Description (Optional)</label>
+                                <textarea
+                                    value={groupDesc}
+                                    onChange={(e) => setGroupDesc(e.target.value)}
+                                    placeholder="What is this group about?"
+                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none h-24"
+                                />
+                            </div>
+                            <div className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-xl border border-white/5">
+                                <input
+                                    type="checkbox"
+                                    id="isPublic"
+                                    checked={isPublic}
+                                    onChange={(e) => setIsPublic(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                                />
+                                <label htmlFor="isPublic" className="flex-1 cursor-pointer">
+                                    <span className="block text-sm font-semibold">Public Group</span>
+                                    <span className="block text-[10px] text-gray-500">Anyone with the invite code can join.</span>
+                                </label>
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
+                            >
+                                Create Group
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Join Group Modal */}
+            {showJoinGroup && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                    <div className="bg-gray-900 border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                            <h3 className="text-xl font-bold">Join Group</h3>
+                            <button onClick={() => setShowJoinGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleJoinGroup} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Invite Code</label>
+                                <input
+                                    type="text"
+                                    value={inviteCode}
+                                    onChange={(e) => setInviteCode(e.target.value)}
+                                    placeholder="Paste invite code here..."
+                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                    required
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2"
+                            >
+                                Join Group
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
 
         </div>
     );
