@@ -26,7 +26,7 @@ const config: Config = {
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
     services: {
         auth: process.env.AUTH_SERVICE_URL || 'http://localhost:5001',
-        notification: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:5002',
+        notification: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:5008',
         user: process.env.USER_SERVICE_URL || 'http://localhost:5003',
         chat: process.env.CHAT_SERVICE_URL || 'http://localhost:5004',
         media: process.env.MEDIA_SERVICE_URL || 'http://localhost:5005',

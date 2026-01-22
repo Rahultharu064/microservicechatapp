@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import prisma from "../config/db.js";
 import logger from "../../../shared/src/logger/logger.js";
+import axios from "axios";
 
 export const getPrivateMessages = async (req: Request, res: Response) => {
   try {
@@ -54,7 +55,7 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
     }
 
     const messageIds = messages.map(m => m.id);
-    const reactions = await (prisma as any).messageReaction.findMany({
+    const reactions = await prisma.messageReaction.findMany({
       where: { messageId: { in: messageIds } }
     });
 
@@ -76,7 +77,7 @@ export const getGroupMessages = async (req: Request, res: Response) => {
     const { limit = "50", offset = "0" } = req.query;
 
     const groupIdStr = groupId as string;
-    const messages = await (prisma.groupMessage as any).findMany({
+    const messages = await prisma.groupMessage.findMany({
       where: { groupId: groupIdStr },
       include: {
         sender: {
@@ -92,7 +93,7 @@ export const getGroupMessages = async (req: Request, res: Response) => {
     });
 
     const messageIds = messages.map((m: any) => m.id);
-    const reactions = await (prisma as any).messageReaction.findMany({
+    const reactions = await prisma.messageReaction.findMany({
       where: { messageId: { in: messageIds } }
     });
 
@@ -155,18 +156,19 @@ export const getConversations = async (req: Request, res: Response) => {
     });
 
     // Get all groups involving the user
+    // Look up memberships first
     const memberships = await prisma.groupMember.findMany({
       where: { userId }
     });
 
     const groupIds = memberships.map(m => m.groupId);
-    const groups = await (prisma as any).group.findMany({
+    const groups = await prisma.group.findMany({
       where: { id: { in: groupIds } }
     });
 
     const lastGroupMessages = await Promise.all(
       groupIds.map(async (gid) => {
-        return (prisma as any).groupMessage.findFirst({
+        return prisma.groupMessage.findFirst({
           where: { groupId: gid },
           orderBy: { createdAt: 'desc' }
         });
@@ -210,6 +212,7 @@ export const getConversations = async (req: Request, res: Response) => {
 
     // Optional enrichment: attach partner fullName/profile from User Service if configured
     const userServiceUrl = process.env.USER_SERVICE_URL || process.env.API_GATEWAY_URL;
+
     if (userServiceUrl) {
       try {
         // Collect unique partner IDs
@@ -225,23 +228,20 @@ export const getConversations = async (req: Request, res: Response) => {
         let batchOk = false;
         try {
           const query = encodeURIComponent(partnerIds.join(','));
-          const batchResp = await fetch(`${baseUrl}/users?ids=${query}`);
-          if (batchResp.ok) {
-            const arr = await batchResp.json();
-            if (Array.isArray(arr)) {
-              for (const u of arr) {
-                if (!u || !u.id) continue;
-                profileMap.set(String(u.id), {
-                  id: String(u.id),
-                  fullName: u.fullName || u.name || u.email || 'Unknown',
-                  profilePic: u.profilePic || undefined,
-                });
-              }
-              batchOk = true;
+          const batchResp = await axios.get(`${baseUrl}/users?ids=${query}`, { validateStatus: () => true });
+          if (batchResp.status === 200 && Array.isArray(batchResp.data)) {
+            for (const u of batchResp.data) {
+              if (!u || !u.id) continue;
+              profileMap.set(String(u.id), {
+                id: String(u.id),
+                fullName: u.fullName || u.name || u.email || 'Unknown',
+                profilePic: u.profilePic || undefined,
+              });
             }
+            batchOk = true;
           }
-        } catch {
-          // ignore and fallback to per-id
+        } catch (e: any) {
+          logger.warn('Batch user fetch failed, falling back to individual', { error: e.message });
         }
 
         // Fallback to per-id if batch not available
@@ -249,9 +249,8 @@ export const getConversations = async (req: Request, res: Response) => {
           const profiles = await Promise.all(
             partnerIds.map(async (id) => {
               try {
-                const resp = await fetch(`${baseUrl}/users/${id}`);
-                if (!resp.ok) return null;
-                const data = await resp.json();
+                const resp = await axios.get(`${baseUrl}/users/${id}`);
+                const data = resp.data;
                 return {
                   id: String(id),
                   fullName: data.fullName || data.name || data.email || 'Unknown',
@@ -281,17 +280,6 @@ export const getConversations = async (req: Request, res: Response) => {
       }
     }
 
-    // Note: To match the frontend expectation of full participant objects, 
-    // the frontend currently expects { id, fullName, profilePic }.
-    // Since this is a microservice, we don't have user names here. 
-    // We should either fetch from User service or rely on frontend to enrich.
-    // HOWEVER, Dashboard.tsx uses allUsers to find names if missing in participant list.
-    // I will return basic structure and let frontend handle enrichment if needed, 
-    // but better if I return what it expects if possible.
-
-    // Actually, Dashboard.tsx:69: const otherUser = activeConversation?.participants.find(p => p.id === activeChat) || allUsers.find(u => u.id === activeChat);
-    // So if I return participants with just IDs, it might work if names are fetched elsewhere.
-
     res.json(conversations);
   } catch (err) {
     logger.error("Failed to fetch conversations", err);
@@ -302,7 +290,7 @@ export const getConversations = async (req: Request, res: Response) => {
 export const getUnreadCount = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const count = await (prisma as any).privateMessage.count({
+    const count = await prisma.privateMessage.count({
       where: {
         receiverId: userId,
         status: { not: "READ" }
