@@ -37,11 +37,9 @@ api.interceptors.response.use(
 
             try {
                 const refreshToken = localStorage.getItem('refreshToken');
+                const userId = localStorage.getItem('userId') || '';
                 if (refreshToken) {
-                    const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-                        userId: 'current-user-id', // This should be managed by auth context
-                        refreshToken
-                    });
+                    const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { userId, refreshToken });
 
                     const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
 

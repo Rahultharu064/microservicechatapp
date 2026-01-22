@@ -3,8 +3,8 @@ import { useAuth } from "../context/AuthContext";
 import { useChat } from "../context/ChatContext";
 import userService, { type UserProfile } from "../services/userService";
 import {
-    LogOut, User as UserIcon, UserPlus, Calendar, Mail, Shield,
-    Send, Search, MoreVertical, Plus, X, Settings, Bell
+    LogOut, User as UserIcon, UserPlus, Shield,
+    Send, Search, Plus, X, Settings
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { decryptMessage } from "../utils/encryption";
@@ -18,7 +18,10 @@ export default function Dashboard() {
         setActiveChat,
         sendMessage,
         typingStatus,
-        onlineUsers
+        onlineUsers,
+        connectionStatus,
+        loadMore,
+        loadingMore
     } = useChat();
 
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -31,6 +34,10 @@ export default function Dashboard() {
     const [showProfile, setShowProfile] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+    // Resolve self id reliably even before user is fully loaded
+    const selfId = useMemo(() => String(user?.id || localStorage.getItem('userId') || ''), [user]);
 
     // Fetch profile and all users
     useEffect(() => {
@@ -52,6 +59,42 @@ export default function Dashboard() {
 
         initData();
     }, []);
+
+    // Ensure sidebar partner names are always available: fetch missing partner profiles by id
+    useEffect(() => {
+        const ensurePartnerProfiles = async () => {
+            try {
+                const knownIds = new Set(allUsers.map(u => String(u.id)));
+                const missingIds = new Set<string>();
+                for (const conv of conversations) {
+                    const partner = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                    if (!partner) continue;
+                    const pid = String(partner.id || '');
+                    if (!pid) continue;
+                    if (!knownIds.has(pid)) {
+                        missingIds.add(pid);
+                    }
+                }
+                if (missingIds.size === 0) return;
+                const fetched = await Promise.all(
+                    Array.from(missingIds).map(id => userService.getUserById(id).catch(() => null))
+                );
+                const valid = fetched.filter((u): u is UserProfile => !!u);
+                if (valid.length > 0) {
+                    setAllUsers(prev => {
+                        const map = new Map(prev.map(u => [String(u.id), u] as const));
+                        for (const u of valid) map.set(String(u.id), u);
+                        return Array.from(map.values());
+                    });
+                }
+            } catch (e) {
+                // silent fail; sidebar will fallback to 'Unknown'
+            }
+        };
+        if (conversations.length > 0) {
+            ensurePartnerProfiles();
+        }
+    }, [conversations, allUsers, selfId]);
 
     // Filter users based on search
     const filteredUsers = useMemo(() => {
@@ -82,10 +125,23 @@ export default function Dashboard() {
         decryptAll();
     }, [messages, decryptedMessages]);
 
-    // Scroll to bottom
+    // Scroll to bottom on new messages appended (not when loading older)
     useEffect(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Load older messages when scrolled near top
+    const handleScroll = async () => {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        if (el.scrollTop <= 80) {
+            const prevHeight = el.scrollHeight;
+            await loadMore();
+            // Maintain viewport position after prepend
+            const newHeight = el.scrollHeight;
+            el.scrollTop = newHeight - prevHeight + el.scrollTop;
+        }
+    };
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -103,8 +159,8 @@ export default function Dashboard() {
         );
     }
 
-    const activeConversation = conversations.find(c => c.participants.some(p => p.id === activeChat));
-    const otherUser = activeConversation?.participants.find(p => p.id === activeChat) || allUsers.find(u => u.id === activeChat);
+    const activeConversation = conversations.find(c => c.participants.some(p => String(p.id) === String(activeChat)));
+    const otherUser = activeConversation?.participants.find(p => String(p.id) === String(activeChat)) || allUsers.find(u => String(u.id) === String(activeChat));
 
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
@@ -154,19 +210,22 @@ export default function Dashboard() {
                         </div>
                     ) : (
                         conversations.map((conv) => {
-                            const partner = conv.participants.find(p => p.id !== user?.id);
-                            const isOnline = onlineUsers[partner?.id || ''] === 'online';
-                            const isActive = activeChat === partner?.id;
+                            const partner = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                            const partnerId = partner?.id || '';
+                            const partnerFromDirectory = allUsers.find(u => u.id === partnerId);
+                            const partnerName = partner?.fullName || partnerFromDirectory?.fullName || partnerFromDirectory?.email || 'Unknown';
+                            const isOnline = onlineUsers[partnerId] === 'online';
+                            const isActive = activeChat === partnerId;
 
                             return (
                                 <div
                                     key={conv.id}
-                                    onClick={() => setActiveChat(partner?.id || null)}
+                                    onClick={() => setActiveChat(partnerId || null)}
                                     className={`p-4 flex items-center space-x-3 cursor-pointer transition-all relative ${isActive ? 'bg-blue-600/10 border-r-2 border-blue-500' : 'hover:bg-gray-800/50'}`}
                                 >
                                     <div className="relative shrink-0">
                                         <div className="h-12 w-12 rounded-full bg-gray-800 flex items-center justify-center font-bold text-lg border border-gray-700">
-                                            {partner?.fullName.charAt(0)}
+                                            {partnerName?.charAt(0)}
                                         </div>
                                         {isOnline && (
                                             <div className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-green-500 rounded-full border-2 border-gray-900 shadow-sm"></div>
@@ -174,7 +233,7 @@ export default function Dashboard() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-baseline mb-0.5">
-                                            <h4 className={`font-semibold truncate text-sm ${isActive ? 'text-blue-400' : 'text-gray-200'}`}>{partner?.fullName}</h4>
+                                            <h4 className={`font-semibold truncate text-sm ${isActive ? 'text-blue-400' : 'text-gray-200'}`}>{partnerName}</h4>
                                             {conv.lastMessage && (
                                                 <span className="text-[10px] text-gray-500">
                                                     {new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -205,7 +264,7 @@ export default function Dashboard() {
                         <header className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/40 backdrop-blur-md sticky top-0 z-10 transition-all">
                             <div className="flex items-center space-x-3">
                                 <div className="h-10 w-10 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold border border-blue-500/20">
-                                    {otherUser?.fullName.charAt(0)}
+                                    {otherUser?.fullName?.charAt(0)}
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-sm">{otherUser?.fullName}</h3>
@@ -250,8 +309,25 @@ export default function Dashboard() {
                             </div>
                         </header>
 
+                        {connectionStatus !== 'connected' && (
+                            <div className="px-4 py-1 text-center text-[11px] bg-gray-800/70 text-gray-300 border-b border-gray-700">
+                                {connectionStatus === 'connecting' && 'Connecting to chat...'}
+                                {connectionStatus === 'reconnecting' && 'Reconnecting...'}
+                                {connectionStatus === 'disconnected' && 'You are offline. Trying to reconnect...'}
+                            </div>
+                        )}
+
                         {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] custom-scrollbar">
+                        <div
+                            ref={messagesContainerRef}
+                            onScroll={handleScroll}
+                            className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] custom-scrollbar"
+                        >
+                            {loadingMore && (
+                                <div className="flex items-center justify-center py-2 text-[11px] text-gray-400">
+                                    Loading older messages…
+                                </div>
+                            )}
                             {messages.length === 0 && (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4">
                                     <div className="h-16 w-16 bg-gray-800 rounded-full flex items-center justify-center">
@@ -263,9 +339,8 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             )}
-                            {messages.map((msg, idx) => {
+                            {messages.map((msg) => {
                                 const isMe = String(msg.senderId) === String(user?.id);
-                                const showAvatar = idx === 0 || messages[idx - 1].senderId !== msg.senderId;
 
                                 return (
                                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
@@ -283,9 +358,26 @@ export default function Dashboard() {
                                                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                                 {isMe && (
-                                                    <span className={`text-[9px] font-bold ${msg.status === 'READ' ? 'text-blue-400' : 'text-gray-600'}`} title={`Status: ${msg.status}`}>
-                                                        {msg.status === 'READ' ? '✓✓' : msg.status === 'DELIVERED' ? '✓✓' : '✓'}
-                                                    </span>
+                                                    (() => {
+                                                        const isPartnerOnline = activeChat ? onlineUsers[activeChat] === 'online' : false;
+                                                        let ticks = '✓';
+                                                        let color = 'text-gray-600';
+                                                        const title = `Status: ${msg.status}`;
+                                                        if (msg.status === 'READ') {
+                                                            ticks = '✓✓';
+                                                            color = 'text-blue-400';
+                                                        } else if (msg.status === 'DELIVERED') {
+                                                            ticks = '✓✓';
+                                                        } else if (msg.status === 'SENT') {
+                                                            // For a real-time feel: if recipient is online, show double tick even before delivered
+                                                            ticks = isPartnerOnline ? '✓✓' : '✓';
+                                                        }
+                                                        return (
+                                                            <span className={`text-[9px] font-bold ${color}`} title={title}>
+                                                                {ticks}
+                                                            </span>
+                                                        );
+                                                    })()
                                                 )}
                                             </div>
                                         </div>
@@ -430,7 +522,7 @@ export default function Dashboard() {
                                             title={`Start chat with ${u.fullName}`}
                                         >
                                             <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg group-hover:scale-105 transition-transform">
-                                                {u.fullName.charAt(0)}
+                                                {u.fullName?.charAt(0) || u.email?.charAt(0) || '?'}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <h4 className="font-bold text-gray-100 group-hover:text-blue-400 transition-colors">{u.fullName}</h4>

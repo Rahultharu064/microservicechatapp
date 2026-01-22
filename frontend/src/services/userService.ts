@@ -27,6 +27,11 @@ const userService = {
     getAllUsers: async (): Promise<UserProfile[]> => {
         const response = await api.get("/users");
         return response.data;
+    },
+
+    getUserById: async (id: string): Promise<UserProfile> => {
+        const response = await api.get(`/users/${id}`);
+        return response.data;
     }
 };
 

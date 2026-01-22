@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 import chatService from "../services/chatService";
@@ -13,8 +13,11 @@ interface ChatContextType {
     messages: Message[];
     setActiveChat: (chatId: string | null) => void;
     sendMessage: (to: string, text: string) => Promise<void>;
+    loadMore: () => Promise<void>;
+    loadingMore: boolean;
     typingStatus: Record<string, boolean>;
     onlineUsers: Record<string, string>;
+    connectionStatus: 'connected' | 'connecting' | 'reconnecting' | 'disconnected';
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -25,19 +28,53 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [activeChat, setActiveChat] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [hasMore, setHasMore] = useState<boolean>(true);
+    const oldestCursorRef = useRef<string | null>(null); // ISO date of oldest loaded message
     const [typingStatus, setTypingStatus] = useState<Record<string, boolean>>({});
     const [onlineUsers, setOnlineUsers] = useState<Record<string, string>>({});
+    const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'reconnecting' | 'disconnected'>('disconnected');
+    const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
-    // Initialize Socket
+    // Refs to avoid stale values inside socket listeners
+    const activeChatRef = useRef<string | null>(null);
+    const userRef = useRef<typeof user>(user);
+
+    useEffect(() => {
+        activeChatRef.current = activeChat;
+    }, [activeChat]);
+
+    useEffect(() => {
+        userRef.current = user;
+    }, [user]);
+
+    // Initialize Socket (only on token changes, not activeChat)
     useEffect(() => {
         if (token) {
             const newSocket = io("http://localhost:5000", {
                 auth: { token },
                 path: "/socket.io"
             });
+            setConnectionStatus('connecting');
 
             newSocket.on("connect", () => {
+                setConnectionStatus('connected');
                 console.log("Connected to chat socket");
+            });
+
+            newSocket.on("disconnect", () => {
+                setConnectionStatus('disconnected');
+            });
+
+            newSocket.io.on("reconnect_attempt", () => {
+                setConnectionStatus('reconnecting');
+            });
+
+            newSocket.io.on("reconnect", () => {
+                setConnectionStatus('connected');
+            });
+
+            newSocket.io.on("error", () => {
+                setConnectionStatus('disconnected');
             });
 
             newSocket.on("user:status", ({ userId, status }: { userId: string, status: string }) => {
@@ -45,12 +82,31 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
 
             newSocket.on("message:receive", (message: Message) => {
+                // Use refs to get the latest values to avoid stale closures
+                const currentActive = activeChatRef.current;
+                const currentUser = userRef.current;
+
                 // Determine if the message belongs to the currently active private chat
-                const isOutgoing = user?.id && message.senderId === user.id;
+                const isOutgoing = currentUser?.id && String(message.senderId) === String(currentUser.id);
                 const otherPartyId = isOutgoing ? message.receiverId : message.senderId;
 
-                if (activeChat && otherPartyId && activeChat === otherPartyId) {
-                    setMessages(prev => [...prev, message]);
+                if (currentActive && otherPartyId && String(currentActive) === String(otherPartyId)) {
+                    setMessages(prev => {
+                        if (isOutgoing) {
+                            // Try to replace an optimistic temp message
+                            const idx = prev.findIndex(m => m.id.startsWith('temp-')
+                                && String(m.senderId) === String(currentUser?.id)
+                                && String(m.receiverId) === String(otherPartyId)
+                                && m.iv === message.iv
+                                && m.cipherText === message.cipherText);
+                            if (idx !== -1) {
+                                const copy = [...prev];
+                                copy[idx] = message;
+                                return copy;
+                            }
+                        }
+                        return [...prev, message];
+                    });
                     // Mark as read for incoming messages only
                     if (!isOutgoing) {
                         newSocket.emit("message:read", { messageId: message.id, from: message.senderId });
@@ -60,13 +116,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 // Update conversations list using the other participant in the conversation
                 setConversations(prev => {
                     if (!otherPartyId) return prev;
-                    const idx = prev.findIndex(c => c.participants.some(p => p.id === otherPartyId));
+                    const idx = prev.findIndex(c => c.participants.some(p => String(p.id) === String(otherPartyId)));
                     if (idx !== -1) {
                         const updated = [...prev];
                         updated[idx] = {
                             ...updated[idx],
                             lastMessage: message,
-                            unreadCount: activeChat === otherPartyId ? 0 : updated[idx].unreadCount + (isOutgoing ? 0 : 1)
+                            unreadCount: String(currentActive) === String(otherPartyId) ? 0 : updated[idx].unreadCount + (isOutgoing ? 0 : 1)
                         };
                         return updated;
                     }
@@ -92,7 +148,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 newSocket.close();
             };
         }
-    }, [token, activeChat]);
+        else {
+            setConnectionStatus('disconnected');
+        }
+    }, [token]);
 
     // Fetch initial conversations
     useEffect(() => {
@@ -104,31 +163,88 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Fetch messages when active chat changes
     useEffect(() => {
         if (activeChat) {
-            chatService.getPrivateMessages(activeChat)
-                .then(setMessages)
+            const LIMIT = 30;
+            chatService.getPrivateMessages(activeChat, { limit: LIMIT })
+                .then((data) => {
+                    setMessages(data);
+                    if (data.length > 0) {
+                        oldestCursorRef.current = data[0].createdAt;
+                    } else {
+                        oldestCursorRef.current = null;
+                    }
+                    setHasMore(data.length >= LIMIT);
+                })
                 .catch(err => {
                     console.error("Failed to fetch messages", err);
                     toast.error("Failed to load chat history");
                 });
         } else {
             setMessages([]);
+            setHasMore(true);
+            oldestCursorRef.current = null;
         }
     }, [activeChat]);
 
     const sendMessage = async (to: string, text: string) => {
-        if (!socket) return;
+        if (!socket || !user?.id) return;
 
         try {
             const encrypted = await encryptMessage(text);
+
+            // Optimistic message
+            const tempId = `temp-${Date.now()}`;
+            const optimisticMsg: Message = {
+                id: tempId,
+                senderId: String(user.id),
+                receiverId: String(to),
+                cipherText: encrypted.cipherText,
+                iv: encrypted.iv,
+                status: "SENT",
+                createdAt: new Date().toISOString()
+            } as Message;
+
+            setMessages(prev => [...prev, optimisticMsg]);
+            setConversations(prev => {
+                const idx = prev.findIndex(c => c.participants.some(p => p.id === to));
+                if (idx !== -1) {
+                    const updated = [...prev];
+                    updated[idx] = {
+                        ...updated[idx],
+                        lastMessage: optimisticMsg,
+                        unreadCount: 0
+                    };
+                    return updated;
+                }
+                return prev;
+            });
+
             socket.emit("message:send", {
                 to,
                 ...encrypted
             });
-
-            // Optimistic update could go here, but we wait for message:sent or message:receive
         } catch (err) {
             console.error("Failed to send message", err);
             toast.error("Failed to send message");
+        }
+    };
+
+    const loadMore = async () => {
+        const chatId = activeChatRef.current;
+        if (!chatId || !hasMore) return;
+        const before = oldestCursorRef.current || undefined;
+        const LIMIT = 30;
+        try {
+            setLoadingMore(true);
+            const older = await chatService.getPrivateMessages(chatId, { before, limit: LIMIT });
+            if (older.length > 0) {
+                setMessages(prev => [...older, ...prev]);
+                oldestCursorRef.current = older[0].createdAt;
+            }
+            setHasMore(older.length >= LIMIT);
+        } catch (e) {
+            console.error('Failed to load more messages', e);
+        } finally {
+            setLoadingMore(false);
         }
     };
 
@@ -140,8 +256,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             messages,
             setActiveChat,
             sendMessage,
+            loadMore,
+            loadingMore,
             typingStatus,
-            onlineUsers
+            onlineUsers,
+            connectionStatus
         }}>
             {children}
         </ChatContext.Provider>

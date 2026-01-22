@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 import authService from "../services/authService";
 
@@ -25,18 +25,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(null);
-
-    useEffect(() => {
-        const accessToken = localStorage.getItem("accessToken");
-        if (accessToken) {
-            setIsAuthenticated(true);
-            setToken(accessToken);
-            // TODO: Decode token or fetch user profile to set 'user' state if needed
-        }
-    }, []);
+    const [token, setToken] = useState<string | null>(() => localStorage.getItem("accessToken"));
+    const [user, setUser] = useState<User | null>(() => {
+        const storedUser = localStorage.getItem("user");
+        if (!storedUser) return null;
+        try { return JSON.parse(storedUser); } catch { return null; }
+    });
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!localStorage.getItem("accessToken"));
 
     const login = async (email: string) => {
         await authService.login(email);
@@ -52,6 +47,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // If not, we might need to decode the token or fetch the profile.
         if (data.user) {
             setUser(data.user);
+            localStorage.setItem("user", JSON.stringify(data.user));
+            localStorage.setItem("userId", data.user.id);
         }
 
         setToken(data.accessToken);

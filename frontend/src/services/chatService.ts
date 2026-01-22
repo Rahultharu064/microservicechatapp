@@ -21,8 +21,14 @@ export interface Conversation {
 }
 
 const chatService = {
-    getPrivateMessages: async (otherUserId: string): Promise<Message[]> => {
-        const response = await api.get(`/chat/messages/private/${otherUserId}`);
+    getPrivateMessages: async (
+        otherUserId: string,
+        options?: { before?: string; limit?: number }
+    ): Promise<Message[]> => {
+        const params: Record<string, any> = {};
+        if (options?.before) params.before = options.before;
+        if (options?.limit) params.limit = options.limit;
+        const response = await api.get(`/chat/messages/private/${otherUserId}`,{ params });
         return response.data;
     },
 
