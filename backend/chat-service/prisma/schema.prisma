@@ -98,3 +98,69 @@ model MessageAttachment {
   @@index([mediaId])
   @@map("messageattachment")
 }
+
+// RESTORED INTROSPECTED MODELS TO PROTECT OTHER SERVICES TABLES
+// These are managed by auth-service and user-service
+
+model loginaudit {
+  id        String   @id @default(uuid())
+  userId    String?
+  email     String
+  ip        String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([ip])
+  @@map("loginaudit")
+}
+
+model refreshtoken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("refreshtoken")
+}
+
+model user {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String?
+  fullName        String
+  phone           String?
+  profilePic      String?
+  provider        user_provider  @default(EMAIL)
+  status          user_status    @default(ACTIVE)
+  isEmailVerified Boolean        @default(false)
+  role            user_role      @default(USER)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  refreshtoken    refreshtoken[]
+
+  @@index([email])
+  @@map("user")
+}
+
+enum user_provider {
+  EMAIL
+  GOOGLE
+}
+
+enum user_status {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum user_role {
+  USER
+  ADMIN
+}

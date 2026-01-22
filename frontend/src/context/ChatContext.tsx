@@ -45,16 +45,29 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
 
             newSocket.on("message:receive", (message: Message) => {
-                if (activeChat === message.senderId) {
+                // Determine if the message belongs to the currently active private chat
+                const isOutgoing = user?.id && message.senderId === user.id;
+                const otherPartyId = isOutgoing ? message.receiverId : message.senderId;
+
+                if (activeChat && otherPartyId && activeChat === otherPartyId) {
                     setMessages(prev => [...prev, message]);
-                    newSocket.emit("message:read", { messageId: message.id, from: message.senderId });
+                    // Mark as read for incoming messages only
+                    if (!isOutgoing) {
+                        newSocket.emit("message:read", { messageId: message.id, from: message.senderId });
+                    }
                 }
-                // Update conversations list
+
+                // Update conversations list using the other participant in the conversation
                 setConversations(prev => {
-                    const idx = prev.findIndex(c => c.participants.some(p => p.id === message.senderId));
+                    if (!otherPartyId) return prev;
+                    const idx = prev.findIndex(c => c.participants.some(p => p.id === otherPartyId));
                     if (idx !== -1) {
                         const updated = [...prev];
-                        updated[idx] = { ...updated[idx], lastMessage: message, unreadCount: activeChat === message.senderId ? 0 : updated[idx].unreadCount + 1 };
+                        updated[idx] = {
+                            ...updated[idx],
+                            lastMessage: message,
+                            unreadCount: activeChat === otherPartyId ? 0 : updated[idx].unreadCount + (isOutgoing ? 0 : 1)
+                        };
                         return updated;
                     }
                     return prev;

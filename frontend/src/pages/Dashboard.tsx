@@ -264,7 +264,7 @@ export default function Dashboard() {
                                 </div>
                             )}
                             {messages.map((msg, idx) => {
-                                const isMe = msg.senderId === user?.id;
+                                const isMe = String(msg.senderId) === String(user?.id);
                                 const showAvatar = idx === 0 || messages[idx - 1].senderId !== msg.senderId;
 
                                 return (
