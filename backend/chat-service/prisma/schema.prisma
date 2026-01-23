@@ -105,6 +105,7 @@ model MessageReaction {
   userId    String
   emoji     String
   createdAt DateTime @default(now())
+  user      user     @relation("ReactionUser", fields: [userId], references: [id])
 
   @@unique([messageId, userId, emoji])
   @@map("messagereaction")
@@ -150,20 +151,21 @@ model refreshtoken {
 }
 
 model user {
-  id              String         @id @default(uuid())
-  email           String         @unique
+  id              String              @id @default(uuid())
+  email           String              @unique
   passwordHash    String?
   fullName        String
   phone           String?
   profilePic      String?
-  provider        user_provider  @default(EMAIL)
-  status          user_status    @default(ACTIVE)
-  isEmailVerified Boolean        @default(false)
-  role            user_role      @default(USER)
-  lastSeen        DateTime?     @default(now())
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  groupMessages   GroupMessage[] @relation("GroupSender")
+  provider        user_provider       @default(EMAIL)
+  status          user_status         @default(ACTIVE)
+  isEmailVerified Boolean             @default(false)
+  role            user_role           @default(USER)
+  lastSeen        DateTime?          @default(now())
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  groupMessages   GroupMessage[]      @relation("GroupSender")
+  reactions       MessageReaction[]   @relation("ReactionUser")
   refreshtoken    refreshtoken[]
 
   @@index([email])

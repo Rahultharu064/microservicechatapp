@@ -5,11 +5,12 @@ import userService, { type UserProfile } from "../services/userService";
 import {
     Send, Search, Plus, X, Settings, Pencil, Trash2,
     Users, Link as LinkIcon, Copy, Paperclip, FileText,
-    Mic, StopCircle, User, LogOut, UserPlus, Shield, Play, Pause
+    Mic, StopCircle, User, LogOut, UserPlus, Shield, Play, Pause, Video
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { decryptMessage } from "../utils/encryption";
 import mediaService from "../services/mediaService";
+import VideoMessage from "../components/VideoMessage";
 import { useNotifications } from "../context/NotificationContext";
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -241,13 +242,21 @@ export default function Dashboard() {
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [isEditingName, setIsEditingName] = useState(false);
     const [uploadingMedia, setUploadingMedia] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
-    const [recordingDuration, setRecordingDuration] = useState(0);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    const timerRef = useRef<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Video recording state
+    const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+    const [videoPreview, setVideoPreview] = useState<string | null>(null);
+    const [showVideoPreview, setShowVideoPreview] = useState(false);
+    const videoRecorderRef = useRef<MediaRecorder | null>(null);
+    const videoChunksRef = useRef<Blob[]>([]);
+    const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
 
     // Voice message forwarding state
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -267,20 +276,7 @@ export default function Dashboard() {
         };
     }, [avatarPreview]);
 
-    // Handle recording timer
-    useEffect(() => {
-        if (isRecording) {
-            timerRef.current = setInterval(() => {
-                setRecordingDuration(prev => prev + 1);
-            }, 1000);
-        } else {
-            if (timerRef.current) clearInterval(timerRef.current);
-            setRecordingDuration(0);
-        }
-        return () => {
-            if (timerRef.current) clearInterval(timerRef.current);
-        };
-    }, [isRecording]);
+
 
     const startRecording = async () => {
         try {
@@ -316,17 +312,7 @@ export default function Dashboard() {
         }
     };
 
-    const cancelRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            // Prevent onstop from sending
-            mediaRecorderRef.current.onstop = null;
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            audioChunksRef.current = [];
-            // Stop tracks
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-        }
-    };
+
 
     const sendVoiceMessage = async (blob: Blob) => {
         if (!activeChat) return;
@@ -345,11 +331,104 @@ export default function Dashboard() {
         }
     };
 
-    const formatDuration = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    // Video recording functions
+    const startVideoRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 1280, height: 720 },
+                audio: true
+            });
+
+            const mediaRecorder = new MediaRecorder(stream);
+            videoRecorderRef.current = mediaRecorder;
+            videoChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    videoChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const videoBlob = new Blob(videoChunksRef.current, { type: 'video/webm' });
+                const previewUrl = URL.createObjectURL(videoBlob);
+                setVideoPreview(previewUrl);
+                setShowVideoPreview(true);
+                stream.getTracks().forEach(track => track.stop());
+                (window as any).__pendingVideoBlob = videoBlob;
+            };
+
+            mediaRecorder.start();
+            setIsRecordingVideo(true);
+        } catch (error) {
+            console.error("Error accessing camera:", error);
+            toast.error("Camera/microphone access denied");
+        }
     };
+
+    const stopVideoRecording = () => {
+        if (videoRecorderRef.current && isRecordingVideo) {
+            videoRecorderRef.current.stop();
+            setIsRecordingVideo(false);
+        }
+    };
+
+    const cancelVideoRecording = () => {
+        if (videoRecorderRef.current && isRecordingVideo) {
+            videoRecorderRef.current.onstop = null;
+            videoRecorderRef.current.stop();
+            setIsRecordingVideo(false);
+            videoChunksRef.current = [];
+            if (videoRecorderRef.current.stream) {
+                videoRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+            }
+        }
+        if (videoPreview) {
+            URL.revokeObjectURL(videoPreview);
+            setVideoPreview(null);
+        }
+        setShowVideoPreview(false);
+        delete (window as any).__pendingVideoBlob;
+    };
+
+    const sendVideoMessage = async () => {
+        const blob = (window as any).__pendingVideoBlob;
+        if (!activeChat || !blob) return;
+
+        try {
+            setUploadingMedia(true);
+            setShowVideoPreview(false);
+
+            toast.loading("Uploading video...", { id: "video-upload" });
+
+            const uploaded = await mediaService.uploadVideo(blob, (progress) => {
+                toast.loading(`Uploading video... ${progress}%`, { id: "video-upload" });
+            });
+
+            toast.dismiss("video-upload");
+            toast.success("Video uploaded successfully");
+
+            await sendMessage(activeChat, "", {
+                id: uploaded.id,
+                type: 'video/mp4',
+                filename: 'video_message.mp4'
+            });
+
+            if (videoPreview) {
+                URL.revokeObjectURL(videoPreview);
+                setVideoPreview(null);
+            }
+            delete (window as any).__pendingVideoBlob;
+        } catch (error) {
+            toast.dismiss("video-upload");
+            toast.error("Failed to send video message");
+            console.error(error);
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+
 
     // Fetch profile and all users
     useEffect(() => {
@@ -596,6 +675,36 @@ export default function Dashboard() {
         }
     };
 
+    const handleUpdateProfile = async () => {
+        if (!editName.trim()) {
+            toast.error("Name cannot be empty");
+            return;
+        }
+
+        try {
+            const fd = new FormData();
+            fd.append('fullName', editName.trim());
+            if (avatarFile) {
+                fd.append('profilePic', avatarFile);
+            }
+
+            const updated = await userService.updateProfile(fd);
+            setProfile(updated);
+            try { localStorage.setItem('profile', JSON.stringify(updated)); } catch (e) {
+                // ignore quota errors
+            }
+            setIsEditingName(false);
+            setEditName('');
+            setAvatarFile(null);
+            if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+            setAvatarPreview(null);
+            toast.success('Profile updated successfully');
+        } catch (error) {
+            toast.error("Failed to update profile");
+            console.error(error);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-900 text-white">
@@ -616,19 +725,19 @@ export default function Dashboard() {
             <aside className="w-80 border-r border-gray-800 flex flex-col bg-gray-900/50 backdrop-blur-xl">
                 {/* User Info Header */}
                 <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/80">
-                    <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setShowProfile(!showProfile)}>
-                        <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold shadow-lg shadow-blue-500/20">
+                    <div className="flex items-center space-x-3 cursor-pointer group" onClick={() => setShowProfile(!showProfile)}>
+                        <div className="h-11 w-11 rounded-2xl overflow-hidden bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold shadow-xl shadow-blue-500/20 transition-transform group-hover:scale-105 duration-300">
                             {profile?.profilePic ? (
-                                <img src={profile.profilePic} alt="avatar" className="h-10 w-10 object-cover" />
+                                <img src={`${API_URL}/users/uploads/${profile.profilePic}`} alt="avatar" className="h-full w-full object-cover" />
                             ) : (
-                                profile?.fullName?.charAt(0) || <User className="h-5 w-5" />
+                                <span className="text-white text-lg">{profile?.fullName?.charAt(0) || profile?.email?.charAt(0) || '?'}</span>
                             )}
                         </div>
                         <div className="hidden sm:block">
-                            <h2 className="text-sm font-bold truncate max-w-[120px]">{profile?.fullName}</h2>
-                            <p className="text-[10px] text-green-500 flex items-center">
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></span>
-                                Online
+                            <h2 className="text-sm font-black text-white truncate max-w-[120px] tracking-tight">{profile?.fullName || 'Set Name'}</h2>
+                            <p className="text-[10px] text-blue-400 font-bold flex items-center uppercase tracking-widest">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 mr-2 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
+                                My Profile
                             </p>
                         </div>
                     </div>
@@ -756,11 +865,11 @@ export default function Dashboard() {
                                     className={`p-4 flex items-center space-x-3 cursor-pointer transition-all relative ${isActive ? 'bg-blue-600/10 border-r-2 border-blue-500' : 'hover:bg-gray-800/50'}`}
                                 >
                                     <div className="relative shrink-0">
-                                        <div className={`h-12 w-12 rounded-full overflow-hidden flex items-center justify-center font-bold text-lg border ${isActive ? 'border-blue-500' : 'border-gray-700'} ${isGroup ? 'bg-indigo-600/20 text-indigo-400' : 'bg-gray-800'}`}>
+                                        <div className={`h-12 w-12 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-lg border ${isActive ? 'border-blue-500' : 'border-gray-700'} ${isGroup ? 'bg-indigo-600/20 text-indigo-400' : 'bg-gray-800'}`}>
                                             {displayPic ? (
-                                                <img src={displayPic} alt="avatar" className="h-12 w-12 object-cover" />
+                                                <img src={`${API_URL}/users/uploads/${displayPic}`} alt="avatar" className="h-12 w-12 object-cover" />
                                             ) : (
-                                                displayName?.charAt(0)
+                                                displayName?.charAt(0) || '?'
                                             )}
                                         </div>
                                         {isOnline && (
@@ -802,14 +911,20 @@ export default function Dashboard() {
                         {/* Chat Header */}
                         <header className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/40 backdrop-blur-md sticky top-0 z-10 transition-all">
                             <div className="flex items-center space-x-3">
-                                <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg border border-white/10">
-                                    {activeConversation?.name?.charAt(0) || otherUser?.fullName?.charAt(0) || '?'}
+                                <div className="h-11 w-11 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center font-bold text-xl shadow-2xl border border-white/5">
+                                    {activeConversation?.name ? (
+                                        activeConversation.name.charAt(0)
+                                    ) : otherUser?.profilePic ? (
+                                        <img src={`${API_URL}/users/uploads/${otherUser.profilePic}`} alt="avatar" className="h-full w-full object-cover" />
+                                    ) : (
+                                        otherUser?.fullName?.charAt(0) || otherUser?.email?.charAt(0) || '?'
+                                    )}
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-sm text-white flex items-center">
-                                        {activeConversation?.name || otherUser?.fullName}
+                                <div className="min-w-0">
+                                    <h3 className="font-black text-sm text-white flex items-center tracking-tight">
+                                        <span className="truncate">{activeConversation?.name || otherUser?.fullName || otherUser?.email || 'Unknown User'}</span>
                                         {activeConversation?.type === 'GROUP' && (
-                                            <span className="ml-2 px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] rounded border border-blue-500/30 uppercase tracking-tighter font-black">Group</span>
+                                            <span className="ml-2 px-2 py-0.5 bg-blue-600 text-[9px] rounded-lg border border-blue-400/30 uppercase font-black tracking-widest shadow-lg shadow-blue-600/20">Group</span>
                                         )}
                                     </h3>
                                     <div className="flex items-center text-[10px]">
@@ -985,6 +1100,15 @@ export default function Dashboard() {
                                                                             }}
                                                                         />
                                                                     </div>
+                                                                ) : (msg as any).media.type.startsWith('video/') ? (
+                                                                    <VideoMessage
+                                                                        messageId={msg.id}
+                                                                        videoMessageId={(msg as any).media.id}
+                                                                        duration={0} // Will be populated from metadata
+                                                                        width={400}
+                                                                        height={300}
+                                                                        onReaction={(messageId, emoji) => sendReaction(messageId, emoji, 'add')}
+                                                                    />
                                                                 ) : (msg as any).media.type.startsWith('audio/') ? (
                                                                     <VoiceMessagePlayer
                                                                         mediaId={(msg as any).media.id}
@@ -1162,20 +1286,40 @@ export default function Dashboard() {
                                     >
                                         <StopCircle className="h-4 w-4" />
                                     </button>
-                                ) : (
+                                ) : isRecordingVideo ? (
                                     <button
                                         type="button"
-                                        onClick={startRecording}
-                                        disabled={uploadingMedia}
-                                        className={`p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-gray-700/50 transition-colors ${uploadingMedia ? 'animate-pulse' : ''}`}
-                                        title="Record Voice Message"
+                                        onClick={stopVideoRecording}
+                                        className="bg-red-600 p-2 rounded-xl text-white hover:bg-red-500 transition-all shadow-lg active:scale-95"
+                                        title="Stop Video Recording"
                                     >
-                                        <Mic className="h-4 w-4" />
+                                        <StopCircle className="h-4 w-4" />
                                     </button>
+                                ) : (
+                                    <div className="flex items-center space-x-1">
+                                        <button
+                                            type="button"
+                                            onClick={startRecording}
+                                            disabled={uploadingMedia}
+                                            className={`p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-gray-700/50 transition-colors ${uploadingMedia ? 'animate-pulse' : ''}`}
+                                            title="Record Voice Message"
+                                        >
+                                            <Mic className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={startVideoRecording}
+                                            disabled={uploadingMedia}
+                                            className={`p-2 rounded-xl text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 transition-colors ${uploadingMedia ? 'animate-pulse' : ''}`}
+                                            title="Record Video Message"
+                                        >
+                                            <Video className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 )}
                                 <button
                                     type="submit"
-                                    disabled={!input.trim() || isRecording}
+                                    disabled={!input.trim() || isRecording || isRecordingVideo}
                                     className="bg-blue-600 p-2 rounded-xl text-white hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-lg active:scale-95"
                                     title="Send Message"
                                 >
@@ -1202,114 +1346,119 @@ export default function Dashboard() {
                             <span className="text-sm font-medium">New Conversation</span>
                         </button>
                     </div>
-                )}
+                )
+                }
 
-                {/* Profile Slide-over (simplified) */}
-                {showProfile && (
-                    <div className="fixed inset-0 z-20 bg-black/50 flex justify-end" onClick={() => setShowProfile(false)}>
-                        <div className="w-80 h-full bg-gray-900 border-l border-gray-800 p-4" onClick={(e) => e.stopPropagation()}>
-                            <h3 className="text-sm font-bold mb-4">Profile</h3>
-                            <div className="flex items-center space-x-3 mb-4">
-                                <div className="h-14 w-14 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
-                                    {avatarPreview ? (
-                                        <img src={avatarPreview} alt="preview" className="h-14 w-14 object-cover" />
-                                    ) : profile?.profilePic ? (
-                                        <img src={profile.profilePic} alt="avatar" className="h-14 w-14 object-cover" />
-                                    ) : (
-                                        <span className="text-lg font-bold">{profile?.fullName?.charAt(0) || '?'}</span>
-                                    )}
+                {/* Profile Slide-over */}
+                {
+                    showProfile && (
+                        <div className="fixed inset-0 z-[105] bg-black/50 backdrop-blur-sm flex justify-end animate-in fade-in duration-300" onClick={() => setShowProfile(false)}>
+                            <div className="w-96 h-full bg-gray-900 border-l border-white/10 p-8 shadow-3xl animate-in slide-in-from-right duration-300" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-8">
+                                    <h2 className="text-2xl font-bold text-white">Settings</h2>
+                                    <button onClick={() => setShowProfile(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400" title="Close Settings">
+                                        <X className="h-6 w-6" />
+                                    </button>
                                 </div>
-                                <div className="flex-1">
+
+                                <div className="flex flex-col items-center mb-8">
+                                    <div className="relative group cursor-pointer" onClick={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}>
+                                        <div className="h-28 w-28 rounded-3xl overflow-hidden bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-2xl transition-transform group-hover:scale-105 duration-300">
+                                            {avatarPreview ? (
+                                                <img src={avatarPreview} alt="preview" className="h-full w-full object-cover" />
+                                            ) : profile?.profilePic ? (
+                                                <img src={`${API_URL}/users/uploads/${profile.profilePic}`} alt="avatar" className="h-full w-full object-cover" />
+                                            ) : (
+                                                profile?.fullName?.charAt(0) || '?'
+                                            )}
+                                        </div>
+                                        <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                                            <Pencil className="h-6 w-6 text-white" />
+                                        </div>
+                                    </div>
                                     <input
                                         type="file"
                                         accept="image/*"
-                                        title="Change profile picture"
-                                        aria-label="Upload profile picture"
+                                        className="hidden"
                                         onChange={(e) => {
                                             const file = e.target.files?.[0] || null;
                                             setAvatarFile(file);
                                             if (avatarPreview) URL.revokeObjectURL(avatarPreview);
                                             setAvatarPreview(file ? URL.createObjectURL(file) : null);
                                         }}
-                                        className="text-xs text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500"
                                     />
+                                    {avatarFile && !uploadingAvatar && (
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    setUploadingAvatar(true);
+                                                    const fd = new FormData();
+                                                    fd.append('profilePic', avatarFile);
+                                                    const updated = await userService.updateProfile(fd);
+                                                    setProfile(updated);
+                                                    setAvatarFile(null);
+                                                    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+                                                    setAvatarPreview(null);
+                                                    toast.success('Profile picture updated');
+                                                } catch (error) {
+                                                    toast.error('Failed to update avatar');
+                                                } finally {
+                                                    setUploadingAvatar(false);
+                                                }
+                                            }}
+                                            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold transition-all"
+                                        >
+                                            Save Changes
+                                        </button>
+                                    )}
+                                    {uploadingAvatar && <div className="mt-4 text-xs text-blue-400 font-bold animate-pulse">Uploading...</div>}
                                 </div>
-                            </div>
-                            <button
-                                disabled={!avatarFile || uploadingAvatar}
-                                onClick={async () => {
-                                    if (!avatarFile) return;
-                                    try {
-                                        setUploadingAvatar(true);
-                                        const fd = new FormData();
-                                        fd.append('profilePic', avatarFile);
-                                        const updated = await userService.updateProfile(fd);
-                                        setProfile(updated);
-                                        try { localStorage.setItem('profile', JSON.stringify(updated)); } catch (e) {
-                                            // ignore quota errors
-                                        }
-                                        setAvatarFile(null);
-                                        if (avatarPreview) URL.revokeObjectURL(avatarPreview);
-                                        setAvatarPreview(null);
-                                        toast.success('Profile picture updated');
-                                    } catch {
-                                        console.error('Avatar upload failed');
-                                        toast.error('Failed to update avatar');
-                                    } finally {
-                                        setUploadingAvatar(false);
-                                    }
-                                }}
-                                className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-semibold"
-                            >
-                                {uploadingAvatar ? 'Uploading...' : 'Update Picture'}
-                            </button>
 
-                            <div className="mt-6">
-                                <p className="text-xs text-gray-400">Name</p>
-                                <p className="text-sm text-gray-200 font-semibold">{profile?.fullName}</p>
-                                <p className="text-xs text-gray-400 mt-3">Email</p>
-                                <p className="text-sm text-gray-200 font-semibold break-all">{profile?.email}</p>
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Display Name</label>
+                                        {isEditingName ? (
+                                            <div className="flex space-x-2">
+                                                <input
+                                                    type="text"
+                                                    value={editName}
+                                                    onChange={(e) => setEditName(e.target.value)}
+                                                    className="flex-1 bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                                    placeholder="Enter your name"
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateProfile()}
+                                                    autoFocus
+                                                />
+                                                <button onClick={handleUpdateProfile} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">OK</button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                                                <p className="text-sm font-bold text-white">{profile?.fullName || 'Not set'}</p>
+                                                <button onClick={() => { setEditName(profile?.fullName || ''); setIsEditingName(true); }} className="text-gray-500 hover:text-blue-400 transition-colors">
+                                                    <Pencil size={14} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Account Email</label>
+                                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                            <p className="text-sm font-medium text-gray-300 break-all">{profile?.email}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-auto">
+                                    <button onClick={logout} className="w-full py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl font-bold transition-all flex items-center justify-center space-x-2 border border-red-500/20">
+                                        <LogOut size={18} />
+                                        <span>Sign Out</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
-                {showProfile && (
-                    <div className="absolute inset-y-0 right-0 w-80 bg-gray-900 border-l border-gray-800 z-50 shadow-2xl animate-in slide-in-from-right duration-300">
-                        <div className="p-6 h-full flex flex-col">
-                            <div className="flex justify-between items-center mb-8">
-                                <h2 className="text-xl font-bold">Profile</h2>
-                                <button onClick={() => setShowProfile(false)} className="p-2 hover:bg-gray-800 rounded-lg" title="Close Profile"><X className="h-5 w-5" /></button>
-                            </div>
-
-                            <div className="flex flex-col items-center mb-8">
-                                <div className="h-24 w-24 rounded-full bg-blue-600 flex items-center justify-center text-4xl font-bold mb-4 shadow-2xl">
-                                    {profile?.fullName?.charAt(0)}
-                                </div>
-                                <h3 className="text-lg font-bold">{profile?.fullName}</h3>
-                                <p className="text-sm text-gray-400 capitalize">{profile?.status?.toLowerCase()}</p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Email</p>
-                                    <p className="text-sm truncate">{profile?.email}</p>
-                                </div>
-                                <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Member Since</p>
-                                    <p className="text-sm">{profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString() : 'N/A'}</p>
-                                </div>
-                            </div>
-
-                            <div className="mt-auto">
-                                <button onClick={logout} className="w-full flex items-center justify-center space-x-2 py-3 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl transition-all font-bold" title="Logout">
-                                    <LogOut className="h-4 w-4" />
-                                    <span>Logout</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </main>
+                    )
+                }
+            </main >
 
             {/* User Search Overlay */}
             {
@@ -1366,11 +1515,11 @@ export default function Dashboard() {
                                             title={`Start chat with ${u.fullName}`}
                                         >
                                             <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg group-hover:scale-105 transition-transform">
-                                                {u.fullName?.charAt(0) || u.email?.charAt(0) || '?'}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="font-bold text-gray-100 group-hover:text-blue-400 transition-colors">{u.fullName}</h4>
-                                                <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                                                {u.profilePic ? (
+                                                    <img src={`${API_URL}/users/uploads/${u.profilePic}`} alt="avatar" className="h-12 w-12 object-cover" />
+                                                ) : (
+                                                    u.fullName?.charAt(0)
+                                                )}
                                             </div>
                                             <div className="hidden group-hover:block transition-all">
                                                 <div className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-bold">CHAT</div>
@@ -1385,180 +1534,235 @@ export default function Dashboard() {
             }
 
             {/* Create Group Modal */}
-            {showCreateGroup && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-                    <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
-                            <h3 className="text-xl font-bold">Create New Group</h3>
-                            <button onClick={() => setShowCreateGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
-                                <X className="h-5 w-5" />
-                            </button>
+            {
+                showCreateGroup && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                        <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                                <h3 className="text-xl font-bold">Create New Group</h3>
+                                <button onClick={() => setShowCreateGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <form onSubmit={handleCreateGroup} className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupName">Group Name</label>
+                                    <input
+                                        id="groupName"
+                                        type="text"
+                                        value={groupName}
+                                        onChange={(e) => setGroupName(e.target.value)}
+                                        placeholder="Enter group name..."
+                                        title="Enter group name"
+                                        className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupDesc">Description (Optional)</label>
+                                    <textarea
+                                        id="groupDesc"
+                                        value={groupDesc}
+                                        onChange={(e) => setGroupDesc(e.target.value)}
+                                        placeholder="What is this group about?"
+                                        title="Group description"
+                                        className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none h-24"
+                                    />
+                                </div>
+                                <div className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-xl border border-white/5">
+                                    <input
+                                        type="checkbox"
+                                        id="isPublic"
+                                        checked={isPublic}
+                                        onChange={(e) => setIsPublic(e.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="isPublic" className="flex-1 cursor-pointer">
+                                        <span className="block text-sm font-semibold">Public Group</span>
+                                        <span className="block text-[10px] text-gray-500">Anyone with the invite code can join.</span>
+                                    </label>
+                                </div>
+                                <button
+                                    type="submit"
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
+                                >
+                                    Create Group
+                                </button>
+                            </form>
                         </div>
-                        <form onSubmit={handleCreateGroup} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupName">Group Name</label>
-                                <input
-                                    id="groupName"
-                                    type="text"
-                                    value={groupName}
-                                    onChange={(e) => setGroupName(e.target.value)}
-                                    placeholder="Enter group name..."
-                                    title="Enter group name"
-                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupDesc">Description (Optional)</label>
-                                <textarea
-                                    id="groupDesc"
-                                    value={groupDesc}
-                                    onChange={(e) => setGroupDesc(e.target.value)}
-                                    placeholder="What is this group about?"
-                                    title="Group description"
-                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none h-24"
-                                />
-                            </div>
-                            <div className="flex items-center space-x-3 p-3 bg-gray-800/30 rounded-xl border border-white/5">
-                                <input
-                                    type="checkbox"
-                                    id="isPublic"
-                                    checked={isPublic}
-                                    onChange={(e) => setIsPublic(e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                                />
-                                <label htmlFor="isPublic" className="flex-1 cursor-pointer">
-                                    <span className="block text-sm font-semibold">Public Group</span>
-                                    <span className="block text-[10px] text-gray-500">Anyone with the invite code can join.</span>
-                                </label>
-                            </div>
-                            <button
-                                type="submit"
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
-                            >
-                                Create Group
-                            </button>
-                        </form>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Join Group Modal */}
-            {showJoinGroup && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-                    <div className="bg-gray-900 border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
-                            <h3 className="text-xl font-bold">Join Group</h3>
-                            <button onClick={() => setShowJoinGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleJoinGroup} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="inviteCode">Invite Code</label>
-                                <input
-                                    id="inviteCode"
-                                    type="text"
-                                    value={inviteCode}
-                                    onChange={(e) => setInviteCode(e.target.value)}
-                                    placeholder="Paste invite code here..."
-                                    title="Paste invite code"
-                                    className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                                    required
-                                />
+            {
+                showJoinGroup && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                        <div className="bg-gray-900 border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                                <h3 className="text-xl font-bold">Join Group</h3>
+                                <button onClick={() => setShowJoinGroup(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                    <X className="h-5 w-5" />
+                                </button>
                             </div>
-                            <button
-                                type="submit"
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2"
-                            >
-                                Join Group
-                            </button>
-                        </form>
+                            <form onSubmit={handleJoinGroup} className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="inviteCode">Invite Code</label>
+                                    <input
+                                        id="inviteCode"
+                                        type="text"
+                                        value={inviteCode}
+                                        onChange={(e) => setInviteCode(e.target.value)}
+                                        placeholder="Paste invite code here..."
+                                        title="Paste invite code"
+                                        className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        required
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-2"
+                                >
+                                    Join Group
+                                </button>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Forward Voice Message Modal */}
-            {showForwardModal && forwardingVoiceMessage && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-                    <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
-                            <h3 className="text-xl font-bold">Forward Voice Message</h3>
-                            <button onClick={() => {
-                                setShowForwardModal(false);
-                                setForwardingVoiceMessage(null);
-                                setSelectedForwardRecipients([]);
-                            }} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="mb-4">
-                                <VoiceMessagePlayer
-                                    mediaId={forwardingVoiceMessage.mediaId}
-                                    duration={forwardingVoiceMessage.duration}
-                                    waveform={forwardingVoiceMessage.waveform}
-                                    token={token || ''}
-                                    isMe={true}
-                                />
+            {
+                showForwardModal && forwardingVoiceMessage && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                        <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                                <h3 className="text-xl font-bold">Forward Voice Message</h3>
+                                <button onClick={() => {
+                                    setShowForwardModal(false);
+                                    setForwardingVoiceMessage(null);
+                                    setSelectedForwardRecipients([]);
+                                }} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                    <X className="h-5 w-5" />
+                                </button>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Select Recipients</label>
-                                <div className="max-h-60 overflow-y-auto space-y-2 bg-gray-800/30 rounded-xl p-3">
-                                    {displayConversations.map((conv) => {
-                                        const isGroup = conv.type === 'GROUP';
-                                        let partnerId: string | null = null;
-                                        let displayName = '';
-
-                                        if (isGroup) {
-                                            partnerId = conv.id;
-                                            displayName = conv.name || 'Group';
-                                        } else {
-                                            const lm = conv.lastMessage;
-                                            if (lm && lm.senderId && lm.receiverId) {
-                                                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId) : String(lm.senderId);
-                                            } else if (conv.participants && conv.participants.length > 0) {
-                                                const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
-                                                partnerId = p ? String(p.id) : null;
-                                            }
-                                            const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
-                                            displayName = partnerProfile?.fullName || partnerProfile?.email || 'Unknown';
-                                        }
-
-                                        if (!partnerId) return null;
-
-                                        return (
-                                            <label key={partnerId} className="flex items-center space-x-3 p-2 hover:bg-gray-700/50 rounded-lg cursor-pointer transition-colors">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedForwardRecipients.includes(partnerId)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedForwardRecipients(prev => [...prev, partnerId!]);
-                                                        } else {
-                                                            setSelectedForwardRecipients(prev => prev.filter(id => id !== partnerId));
-                                                        }
-                                                    }}
-                                                    className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                                                />
-                                                <span className="text-sm">{displayName}</span>
-                                            </label>
-                                        );
-                                    })}
+                            <div className="p-6 space-y-4">
+                                <div className="mb-4">
+                                    <VoiceMessagePlayer
+                                        mediaId={forwardingVoiceMessage.mediaId}
+                                        duration={forwardingVoiceMessage.duration}
+                                        waveform={forwardingVoiceMessage.waveform}
+                                        token={token || ''}
+                                        isMe={true}
+                                    />
                                 </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Select Recipients</label>
+                                    <div className="max-h-60 overflow-y-auto space-y-2 bg-gray-800/30 rounded-xl p-3">
+                                        {displayConversations.map((conv) => {
+                                            const isGroup = conv.type === 'GROUP';
+                                            let partnerId: string | null = null;
+                                            let displayName = '';
+
+                                            if (isGroup) {
+                                                partnerId = conv.id;
+                                                displayName = conv.name || 'Group';
+                                            } else {
+                                                const lm = conv.lastMessage;
+                                                if (lm && lm.senderId && lm.receiverId) {
+                                                    partnerId = String(lm.senderId) === selfId ? String(lm.receiverId) : String(lm.senderId);
+                                                } else if (conv.participants && conv.participants.length > 0) {
+                                                    const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                                                    partnerId = p ? String(p.id) : null;
+                                                }
+                                                const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
+                                                displayName = partnerProfile?.fullName || partnerProfile?.email || 'Unknown';
+                                            }
+
+                                            if (!partnerId) return null;
+
+                                            return (
+                                                <label key={partnerId} className="flex items-center space-x-3 p-2 hover:bg-gray-700/50 rounded-lg cursor-pointer transition-colors">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedForwardRecipients.includes(partnerId)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedForwardRecipients(prev => [...prev, partnerId!]);
+                                                            } else {
+                                                                setSelectedForwardRecipients(prev => prev.filter(id => id !== partnerId));
+                                                            }
+                                                        }}
+                                                        className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                                                    />
+                                                    <span className="text-sm">{displayName}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleForwardVoice}
+                                    disabled={selectedForwardRecipients.length === 0}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
+                                >
+                                    Forward to {selectedForwardRecipients.length} recipient{selectedForwardRecipients.length !== 1 ? 's' : ''}
+                                </button>
                             </div>
-                            <button
-                                onClick={handleForwardVoice}
-                                disabled={selectedForwardRecipients.length === 0}
-                                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
-                            >
-                                Forward to {selectedForwardRecipients.length} recipient{selectedForwardRecipients.length !== 1 ? 's' : ''}
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-        </div>
+            {/* Video Preview Modal */}
+            {
+                showVideoPreview && videoPreview && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300">
+                        <div className="bg-gray-900 border border-white/10 w-full max-w-2xl rounded-3xl shadow-3xl overflow-hidden animate-in zoom-in duration-300">
+                            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                                <h3 className="text-xl font-bold">Preview Video</h3>
+                                <button onClick={cancelVideoRecording} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400" title="Close">
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="p-6">
+                                <video
+                                    src={videoPreview}
+                                    controls
+                                    className="w-full rounded-2xl bg-black shadow-2xl overflow-hidden"
+                                    style={{ maxHeight: '50vh' }}
+                                    autoPlay
+                                />
+                                <div className="flex space-x-4 mt-8">
+                                    <button
+                                        onClick={sendVideoMessage}
+                                        disabled={uploadingMedia}
+                                        className="flex-1 bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98] flex items-center justify-center space-x-2"
+                                    >
+                                        <span>{uploadingMedia ? 'Uploading...' : 'Send Video'}</span>
+                                        {!uploadingMedia && <Send size={18} />}
+                                    </button>
+                                    <button
+                                        onClick={cancelVideoRecording}
+                                        className="px-8 bg-gray-800 hover:bg-gray-700 py-4 rounded-2xl font-bold text-gray-300 transition-all"
+                                    >
+                                        Discard
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Hidden video element for live camera preview */}
+            <video
+                ref={videoPreviewRef}
+                className="hidden"
+                muted
+                playsInline
+            />
+
+        </div >
     );
 }

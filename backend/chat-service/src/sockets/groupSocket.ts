@@ -8,6 +8,11 @@ interface GroupMessagePayload {
   cipherText: string;
   iv: string;
   keyVersion: number;
+  media?: {
+    id: string;
+    type: string;
+    filename: string;
+  };
 }
 
 export const groupChatSocket = (io: Server) => {
@@ -52,14 +57,43 @@ export const groupChatSocket = (io: Server) => {
           },
         });
 
+        // Save attachment if media is present
+        let media = undefined;
+        if (payload.media) {
+          await (prisma as any).messageAttachment.create({
+            data: {
+              messageId: msg.id,
+              messageType: "group",
+              mediaId: payload.media.id,
+              mediaType: payload.media.type,
+              mediaUrl: `/media/download/${payload.media.id}`,
+              metadata: JSON.stringify({
+                filename: payload.media.filename,
+                type: payload.media.type
+              })
+            }
+          });
+          media = {
+            id: payload.media.id,
+            type: payload.media.type,
+            filename: payload.media.filename,
+            voiceMessage: payload.media.type.startsWith('audio/') ? {
+              duration: 0, // Will be populated later
+              waveform: []
+            } : undefined
+          };
+        }
+
         // Broadcast to group (including sender) with sender details
-        io.to(`group:${payload.groupId}`).emit("group:message:receive", {
+        const messageWithMedia = {
           ...msg,
           sender: {
             id: user.id,
             fullName: user.fullName || 'Unknown'
-          }
-        });
+          },
+          media
+        };
+        io.to(`group:${payload.groupId}`).emit("group:message:receive", messageWithMedia);
 
         // Fetch group members to notify (except sender)
         const members = await (prisma as any).groupMember.findMany({
@@ -171,8 +205,7 @@ export const groupChatSocket = (io: Server) => {
           messageId: message.id,
           groupId: message.groupId,
           cipherText: message.cipherText,
-          iv: message.iv,
-          updatedAt: message.updatedAt
+          iv: message.iv
         };
 
         io.to(`group:${payload.groupId}`).emit("group:message:edit", updateEvent);

@@ -59,10 +59,35 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
       where: { messageId: { in: messageIds } }
     });
 
-    const messagesWithReactions = messages.map(m => ({
-      ...m,
-      reactions: reactions.filter((r: any) => r.messageId === m.id)
-    }));
+    const attachments = await prisma.messageAttachment.findMany({
+      where: { messageId: { in: messageIds }, messageType: "private" }
+    });
+
+    const messagesWithReactions = messages.map(m => {
+      const msgReactions = reactions.filter((r: any) => r.messageId === m.id);
+      const msgAttachments = attachments.filter((a: any) => a.messageId === m.id);
+
+      let media = undefined;
+      if (msgAttachments.length > 0) {
+        const att = msgAttachments[0]!;
+        const metadata = att.metadata ? JSON.parse(att.metadata) : {};
+        media = {
+          id: att.mediaId,
+          type: att.mediaType,
+          filename: metadata.filename || 'file',
+          voiceMessage: att.mediaType.startsWith('audio/') ? {
+            duration: metadata.duration || 0,
+            waveform: metadata.waveform || []
+          } : undefined
+        };
+      }
+
+      return {
+        ...m,
+        reactions: msgReactions,
+        media
+      };
+    });
 
     res.json(messagesWithReactions.reverse());
   } catch (err) {
@@ -97,10 +122,35 @@ export const getGroupMessages = async (req: Request, res: Response) => {
       where: { messageId: { in: messageIds } }
     });
 
-    const messagesWithReactions = messages.map((m: any) => ({
-      ...m,
-      reactions: reactions.filter((r: any) => r.messageId === m.id)
-    }));
+    const attachments = await prisma.messageAttachment.findMany({
+      where: { messageId: { in: messageIds }, messageType: "group" }
+    });
+
+    const messagesWithReactions = messages.map((m: any) => {
+      const msgReactions = reactions.filter((r: any) => r.messageId === m.id);
+      const msgAttachments = attachments.filter((a: any) => a.messageId === m.id);
+
+      let media = undefined;
+      if (msgAttachments.length > 0) {
+        const att = msgAttachments[0]!;
+        const metadata = att.metadata ? JSON.parse(att.metadata) : {};
+        media = {
+          id: att.mediaId,
+          type: att.mediaType,
+          filename: metadata.filename || 'file',
+          voiceMessage: att.mediaType.startsWith('audio/') ? {
+            duration: metadata.duration || 0,
+            waveform: metadata.waveform || []
+          } : undefined
+        };
+      }
+
+      return {
+        ...m,
+        reactions: msgReactions,
+        media
+      };
+    });
 
     res.json(messagesWithReactions.reverse());
   } catch (err) {
@@ -194,7 +244,7 @@ export const getConversations = async (req: Request, res: Response) => {
 
     // Add groups
     for (let i = 0; i < groups.length; i++) {
-      const g = groups[i];
+      const g = groups[i]!;
       const lastMsg = lastGroupMessages[i];
       conversationMap.set(g.id, {
         id: g.id,

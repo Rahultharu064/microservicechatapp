@@ -21,7 +21,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     if (!parsed.success) return res.status(400).json(parsed.error);
 
     const data: any = parsed.data;
-    if (req.file) data.profilePic = `/src/uploads/${req.file.filename}`;
+    if (req.file) data.profilePic = req.file.filename;
 
     const updated = await userService.updateUser(req.user!.id, data);
     res.json(updated);

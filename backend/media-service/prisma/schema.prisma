@@ -22,6 +22,7 @@ model Media {
 
   thumbnails   Thumbnail[]
   voiceMessage VoiceMessage?
+  videoMessage VideoMessage?
 }
 
 model Thumbnail {
@@ -40,6 +41,20 @@ model VoiceMessage {
   waveform      String?  @db.Text
   format        String
   convertedPath String?
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+}
+
+model VideoMessage {
+  id            String   @id @default(uuid())
+  mediaId       String   @unique
+  duration      Float
+  width         Int
+  height        Int
+  codec         String
+  thumbnailPath String?
+  convertedPath String?
+  format        String
 
   media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 }

@@ -35,10 +35,12 @@ app.use(createServiceProxy(config.services.user, SERVICE_ROUTES.USERS.rewrite, S
 app.use(createServiceProxy(config.services.chat, SERVICE_ROUTES.CHAT.rewrite, SERVICE_ROUTES.CHAT.path, true));
 app.use(createServiceProxy(config.services.notification, SERVICE_ROUTES.NOTIFICATIONS.rewrite, SERVICE_ROUTES.NOTIFICATIONS.path));
 app.use(createServiceProxy(config.services.media, SERVICE_ROUTES.MEDIA.rewrite, SERVICE_ROUTES.MEDIA.path));
+app.use(createServiceProxy(config.services.chat, SERVICE_ROUTES.REACTIONS.rewrite, SERVICE_ROUTES.REACTIONS.path));
 app.use(createServiceProxy(config.services.search, SERVICE_ROUTES.SEARCH.rewrite, SERVICE_ROUTES.SEARCH.path));
 app.use(createServiceProxy(config.services.admin, SERVICE_ROUTES.ADMIN.rewrite, SERVICE_ROUTES.ADMIN.path));
 
 // Socket.IO Proxy - Ensure path is preserved by using pathFilter (v3 way)
+// This handles polling requests (HTTP)
 app.use(createProxyMiddleware({
     target: config.services.chat,
     ws: true,

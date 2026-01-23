@@ -11,6 +11,11 @@ interface PrivateMessagePayload {
   iv: string;
   senderPublicKey: string;
   burnAfterRead?: boolean;
+  media?: {
+    id: string;
+    type: string;
+    filename: string;
+  };
 }
 
 export const privateChatSocket = (io: Server) => {
@@ -40,9 +45,37 @@ export const privateChatSocket = (io: Server) => {
           },
         });
 
+        // Save attachment if media is present
+        let media = undefined;
+        if (payload.media) {
+          await (prisma as any).messageAttachment.create({
+            data: {
+              messageId: message.id,
+              messageType: "private",
+              mediaId: payload.media.id,
+              mediaType: payload.media.type,
+              mediaUrl: `/media/download/${payload.media.id}`,
+              metadata: JSON.stringify({
+                filename: payload.media.filename,
+                type: payload.media.type
+              })
+            }
+          });
+          media = {
+            id: payload.media.id,
+            type: payload.media.type,
+            filename: payload.media.filename,
+            voiceMessage: payload.media.type.startsWith('audio/') ? {
+              duration: 0, // Will be populated later
+              waveform: []
+            } : undefined
+          };
+        }
+
         // Relay to recipient (room is the recipient user id)
+        const messageWithMedia = { ...message, media };
         const recipientRoom = io.to(payload.to);
-        recipientRoom.emit("message:receive", message);
+        recipientRoom.emit("message:receive", messageWithMedia);
 
         // Notify sender as ack
         socket.emit("message:sent", { messageId: message.id, status: "SENT" });
@@ -234,4 +267,3 @@ export const privateChatSocket = (io: Server) => {
     });
   });
 };
-

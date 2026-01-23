@@ -57,18 +57,27 @@ export const getReactions = async (req: AuthRequest, res: Response) => {
     try {
         const reactions = await prismaClient.messageReaction.findMany({
             where: { messageId },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        fullName: true,
-                        profilePic: true,
-                    },
-                },
+        });
+
+        // Fetch user data separately since Prisma client may not be regenerated yet
+        const userIds = [...new Set(reactions.map(r => r.userId))];
+        const users = await prismaClient.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+                id: true,
+                fullName: true,
+                profilePic: true,
             },
         });
 
-        res.json(reactions);
+        const userMap = new Map(users.map(u => [u.id, u]));
+
+        const reactionsWithUsers = reactions.map(reaction => ({
+            ...reaction,
+            user: userMap.get(reaction.userId) || null,
+        }));
+
+        res.json(reactionsWithUsers);
     } catch (error) {
         console.error("Get reactions error:", error);
         res.status(500).json({ error: "Failed to get reactions" });
@@ -85,7 +94,7 @@ export const updatePlaybackPosition = async (req: AuthRequest, res: Response) =>
     }
 
     try {
-        const playbackPosition = await prismaClient.voicePlaybackPosition.upsert({
+        const playbackPosition = await (prismaClient as any).voicePlaybackPosition.upsert({
             where: {
                 voiceMessageId_userId: {
                     voiceMessageId,
@@ -114,7 +123,7 @@ export const getPlaybackPosition = async (req: AuthRequest, res: Response) => {
     const userId = req.user!.userId;
 
     try {
-        const playbackPosition = await prismaClient.voicePlaybackPosition.findUnique({
+        const playbackPosition = await (prismaClient as any).voicePlaybackPosition.findUnique({
             where: {
                 voiceMessageId_userId: {
                     voiceMessageId,

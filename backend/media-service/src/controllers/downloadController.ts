@@ -65,6 +65,34 @@ export const downloadVoice = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const downloadVideo = async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    try {
+        const media = await prismaClient.media.findUnique({
+            where: { id: id as string },
+            include: { videoMessage: true },
+        });
+
+        if (!media) {
+            return res.status(404).json({ error: "Video media not found" });
+        }
+
+        const encryptedBuffer = await readFile(media.storagePath);
+        const encryptionKey = Buffer.from(media.encryptedKey, "hex");
+
+        // Decrypt the buffer
+        const decryptedBuffer = decryptBuffer(encryptedBuffer, encryptionKey, media.iv);
+
+        res.setHeader("Content-Type", media.mimeType);
+        res.setHeader("Content-Disposition", `attachment; filename="${media.filename}"`);
+        res.send(decryptedBuffer);
+    } catch (error) {
+        console.error("Video download error:", error);
+        res.status(500).json({ error: "Failed to download video message" });
+    }
+};
+
 export const getThumbnail = async (req: AuthRequest, res: Response) => {
     const { id, size } = req.params;
 

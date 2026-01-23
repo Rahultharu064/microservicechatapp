@@ -24,6 +24,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@prisma/client": "^6.19.2",
     "clamscan": "^2.3.2",
     "cors": "^2.8.6",

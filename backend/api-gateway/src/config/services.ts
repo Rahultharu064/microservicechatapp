@@ -23,6 +23,10 @@ export const SERVICE_ROUTES = {
         path: '/api/search',
         rewrite: { '^/api/search': '/search' },
     },
+    REACTIONS: {
+        path: '/api/reactions',
+        rewrite: { '^/api/reactions': '/api/reactions' },
+    },
     ADMIN: {
         path: '/api/admin',
         rewrite: { '^/api/admin': '/admin' },

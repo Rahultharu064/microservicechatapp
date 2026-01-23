@@ -20,7 +20,8 @@ const wsProxy = createProxyMiddleware({
 });
 
 server.on('upgrade', (req, socket, head) => {
-    if (req.url?.startsWith('/socket.io')) {
+    if (req.url?.includes('/socket.io')) {
+        logger.info(`Upgrading WebSocket connection for: ${req.url}`);
         (wsProxy as any).upgrade(req, socket, head);
     }
 });
