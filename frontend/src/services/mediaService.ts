@@ -27,6 +27,28 @@ const mediaService = {
             },
         });
         return response.data;
+    },
+
+    uploadVoice: async (blob: Blob) => {
+        const formData = new FormData();
+        formData.append('voice', blob, 'voice_message.webm');
+
+        const response = await axios.post(`${API_URL}/media/voice/upload`, formData, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            },
+        });
+        return response.data;
+    },
+
+    downloadVoice: async (voiceMessageId: string) => {
+        const response = await axios.get(`${API_URL}/media/download/voice/${voiceMessageId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            },
+            responseType: 'blob',
+        });
+        return response.data;
     }
 };
 

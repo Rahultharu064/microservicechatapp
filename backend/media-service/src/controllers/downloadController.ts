@@ -37,6 +37,34 @@ export const downloadMedia = async (req: AuthRequest, res: Response) => {
     }
 };
 
+export const downloadVoice = async (req: AuthRequest, res: Response) => {
+    const { voiceMessageId } = req.params;
+
+    try {
+        const voiceMessage = await prismaClient.voiceMessage.findUnique({
+            where: { id: voiceMessageId as string },
+            include: { media: true },
+        });
+
+        if (!voiceMessage) {
+            return res.status(404).json({ error: "Voice message not found" });
+        }
+
+        const encryptedBuffer = await readFile(voiceMessage.media.storagePath);
+        const encryptionKey = Buffer.from(voiceMessage.media.encryptedKey, "hex");
+
+        // Decrypt the buffer
+        const decryptedBuffer = decryptBuffer(encryptedBuffer, encryptionKey, voiceMessage.media.iv);
+
+        res.setHeader("Content-Type", voiceMessage.media.mimeType);
+        res.setHeader("Content-Disposition", `attachment; filename="voice_message_${voiceMessageId}.${voiceMessage.format}"`);
+        res.send(decryptedBuffer);
+    } catch (error) {
+        console.error("Voice download error:", error);
+        res.status(500).json({ error: "Failed to download voice message" });
+    }
+};
+
 export const getThumbnail = async (req: AuthRequest, res: Response) => {
     const { id, size } = req.params;
 

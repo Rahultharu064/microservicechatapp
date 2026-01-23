@@ -110,6 +110,17 @@ model MessageReaction {
   @@map("messagereaction")
 }
 
+model VoicePlaybackPosition {
+  id            String   @id @default(uuid())
+  voiceMessageId String  @unique
+  userId        String
+  position      Float    // Position in seconds
+  updatedAt     DateTime @updatedAt
+
+  @@unique([voiceMessageId, userId])
+  @@map("voiceplaybackposition")
+}
+
 model loginaudit {
   id        String   @id @default(uuid())
   userId    String?

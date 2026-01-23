@@ -19,9 +19,9 @@ export const getAudioMetadata = async (filePath: string): Promise<AudioMetadata>
             if (!audioStream) return reject(new Error("No audio stream found"));
 
             resolve({
-                duration: metadata.format.duration || 0,
-                format: metadata.format.format_name || "unknown",
-                bitrate: metadata.format.bit_rate || 0,
+                duration: metadata.format?.duration || 0,
+                format: metadata.format?.format_name || "unknown",
+                bitrate: metadata.format?.bit_rate || 0,
             });
         });
     });
@@ -54,20 +54,70 @@ export const generateWaveform = async (
     return new Promise((resolve, reject) => {
         const waveform: number[] = [];
 
+        // Use FFmpeg to extract actual waveform data
         ffmpeg(filePath)
-            .audioFilters(`compand,showwavespic=s=${samples}x100`)
+            .audioFilters(`astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-`)
+            .outputFormat('null')
+            .on('stderr', (stderr) => {
+                // Parse RMS levels from FFmpeg output
+                const rmsMatches = stderr.match(/lavfi\.astats\.Overall\.RMS_level=(-?\d+\.\d+)/g);
+                if (rmsMatches) {
+                    rmsMatches.forEach(match => {
+                        const rms = parseFloat(match.split('=')[1]);
+                        // Convert dB to amplitude (0-1 range)
+                        const amplitude = Math.pow(10, rms / 20);
+                        waveform.push(Math.min(1, amplitude));
+                    });
+                }
+            })
             .on("end", () => {
-                // For simplicity, generate normalized waveform data
-                // In production, you'd extract actual amplitude data
+                if (waveform.length === 0) {
+                    // Fallback to simple waveform if extraction fails
+                    const normalized = Array.from({ length: samples }, () =>
+                        Math.random() * 0.5 + 0.5
+                    );
+                    resolve(normalized);
+                } else {
+                    // Interpolate to desired sample count
+                    const interpolated = interpolateWaveform(waveform, samples);
+                    resolve(interpolated);
+                }
+            })
+            .on("error", (err) => {
+                console.error('Waveform extraction error:', err);
+                // Fallback to simple waveform
                 const normalized = Array.from({ length: samples }, () =>
                     Math.random() * 0.5 + 0.5
                 );
                 resolve(normalized);
             })
-            .on("error", reject)
             .output("/dev/null")
             .run();
     });
+};
+
+// Helper function to interpolate waveform data to desired sample count
+const interpolateWaveform = (data: number[], targetSamples: number): number[] => {
+    if (data.length === targetSamples) return data;
+    if (data.length === 0) return Array(targetSamples).fill(0.5);
+
+    const result: number[] = [];
+    const ratio = data.length / targetSamples;
+
+    for (let i = 0; i < targetSamples; i++) {
+        const index = i * ratio;
+        const lowerIndex = Math.floor(index);
+        const upperIndex = Math.min(Math.ceil(index), data.length - 1);
+        const weight = index - lowerIndex;
+
+        if (lowerIndex === upperIndex) {
+            result.push(data[lowerIndex]);
+        } else {
+            result.push(data[lowerIndex] * (1 - weight) + data[upperIndex] * weight);
+        }
+    }
+
+    return result;
 };
 
 // Simplified waveform generation using audio peaks

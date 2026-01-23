@@ -1,12 +1,13 @@
 import type { Response } from "express";
 import type { AuthRequest } from "../middlewares/authMiddleware.ts";
 import fs from "fs/promises";
+import path from "path";
 import { randomBytes } from "crypto";
 import { encryptBuffer } from "../utils/crypto.ts";
 import { saveFile } from "../services/storageService.ts";
+import { generateWaveform, getAudioMetadata } from "../services/audioService.ts";
 import prismaClient from "../config/db.ts";
 import { publishMediaProcessed } from "../services/messageService.ts";
-import { getAudioMetadata, convertToOggOpus, generateSimpleWaveform } from "../services/audioService.ts";
 
 export const uploadVoiceMessage = async (
     req: AuthRequest,
@@ -20,17 +21,10 @@ export const uploadVoiceMessage = async (
     }
 
     try {
-        // Get audio metadata
-        const metadata = await getAudioMetadata(file.path);
+        // Read the uploaded audio file directly (no conversion needed)
+        const buffer = await fs.readFile(file.path);
 
-        // Convert to OGG/Opus for optimal storage
-        const convertedPath = await convertToOggOpus(file.path, `voice_${Date.now()}`);
-
-        // Generate waveform data
-        const waveform = await generateSimpleWaveform(file.path);
-
-        // Read converted file for encryption
-        const buffer = await fs.readFile(convertedPath);
+        // Encrypt the audio file
         const encryptionKey = randomBytes(32);
         const { encrypted, iv } = encryptBuffer(buffer, encryptionKey);
 
@@ -42,22 +36,29 @@ export const uploadVoiceMessage = async (
             data: {
                 ownerId: userId,
                 filename: file.originalname,
-                mimeType: "audio/ogg",
+                mimeType: file.mimetype, // Keep original mimetype (webm/ogg)
                 size: buffer.length,
                 storagePath,
                 encryptedKey: encryptionKey.toString("hex"),
-                iv: iv ,
+                iv: iv,
             },
         });
+
+        // Get real audio metadata
+        const metadata = await getAudioMetadata(file.path);
+        const realDuration = Math.max(1, Math.floor(metadata.duration));
+
+        // Generate real waveform data
+        const waveform = await generateWaveform(file.path, 40);
 
         // Create voice message metadata
         const voiceMessage = await prismaClient.voiceMessage.create({
             data: {
                 mediaId: media.id,
-                duration: metadata.duration,
+                duration: realDuration,
                 waveform: JSON.stringify(waveform),
-                format: metadata.format,
-                convertedPath: convertedPath,
+                format: file.mimetype.split('/')[1] || 'webm',
+                convertedPath: storagePath,
             },
         });
 
@@ -86,10 +87,10 @@ export const getVoiceMessage = async (req: AuthRequest, res: Response) => {
     try {
         const media = await prismaClient.media.findUnique({
             where: { id: id as string },
-            include: { voiceMessage  : true },
+            include: { voiceMessage: true },
         });
 
-        if (!media || !media.voiceMessage ) {
+        if (!media || !media.voiceMessage) {
             return res.status(404).json({ error: "Voice message not found" });
         }
 

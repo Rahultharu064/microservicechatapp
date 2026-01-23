@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import messageRoutes from "./routes/messageRoute.ts";
 import groupRoutes from "./routes/groupRoute.ts";
 import attachmentRoutes from "./routes/attachmentRoute.ts";
+import reactionRoutes from "./routes/reactionRoute.ts";
 // import fileRoutes from "./routes/fileRoute.ts";
 import { initSockets } from "./sockets/index.ts";
 import logger from "../../shared/src/logger/logger.ts";
@@ -36,6 +37,7 @@ app.use(express.json());
 app.use("/api/messages", messageRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/attachments", attachmentRoutes);
+app.use("/api/reactions", reactionRoutes);
 
 // Socket handlers
 initSockets(io);

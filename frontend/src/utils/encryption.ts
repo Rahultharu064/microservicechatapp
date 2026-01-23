@@ -18,7 +18,22 @@ export const encryptMessage = async (text: string) => {
 
 export const decryptMessage = async (cipherText: string, _iv: string) => {
     try {
-        return atob(cipherText); // Simplified!
+        // Handle case where cipherText might not be base64 encoded
+        if (!cipherText || cipherText === "[Decryption Error]") {
+            return cipherText || "[Decryption Error]";
+        }
+
+        // Check if it's already plain text (not base64)
+        // Try to decode as base64 first
+        try {
+            const decoded = atob(cipherText);
+            // If successful, return decoded text
+            return decoded;
+        } catch (base64Error) {
+            // Not valid base64, return as-is (might already be plain text)
+            console.warn("cipherText is not valid base64, treating as plain text:", cipherText);
+            return cipherText;
+        }
     } catch (e) {
         console.error("Decryption failed", e);
         return "[Decryption Error]";

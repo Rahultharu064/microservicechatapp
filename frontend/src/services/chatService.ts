@@ -24,6 +24,15 @@ export interface Message {
         fullName: string;
     };
     createdAt: string;
+    media?: {
+        id: string;
+        type: string;
+        filename: string;
+        voiceMessage?: {
+            duration: number;
+            waveform: number[];
+        }
+    };
 }
 
 export interface Conversation {

@@ -3,9 +3,9 @@ import { useAuth } from "../context/AuthContext";
 import { useChat } from "../context/ChatContext";
 import userService, { type UserProfile } from "../services/userService";
 import {
-    LogOut, User as UserIcon, UserPlus, Shield,
     Send, Search, Plus, X, Settings, Pencil, Trash2,
-    Users, Link as LinkIcon, Copy, Paperclip, FileText
+    Users, Link as LinkIcon, Copy, Paperclip, FileText,
+    Mic, StopCircle, User, LogOut, UserPlus, Shield, Play, Pause
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { decryptMessage } from "../utils/encryption";
@@ -13,6 +13,177 @@ import mediaService from "../services/mediaService";
 import { useNotifications } from "../context/NotificationContext";
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// WhatsApp-style Voice Message Player Component
+const VoiceMessagePlayer = ({ mediaId, duration, waveform, token, isMe, onForward }: {
+    mediaId: string;
+    duration: number;
+    waveform: number[];
+    token: string;
+    isMe: boolean;
+    onForward?: () => void;
+}) => {
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const waveformRef = useRef<HTMLDivElement>(null);
+
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const togglePlay = () => {
+        if (!audioRef.current) return;
+
+        if (isPlaying) {
+            audioRef.current.pause();
+        } else {
+            audioRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+    };
+
+    const changeSpeed = (speed: number) => {
+        if (audioRef.current) {
+            audioRef.current.playbackRate = speed;
+            setPlaybackSpeed(speed);
+            setShowSpeedMenu(false);
+        }
+    };
+
+    const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!audioRef.current || !waveformRef.current) return;
+
+        const rect = waveformRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const percentage = clickX / rect.width;
+        const newTime = percentage * duration;
+
+        audioRef.current.currentTime = newTime;
+        setCurrentTime(newTime);
+    };
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+        const handleEnded = () => {
+            setIsPlaying(false);
+            setCurrentTime(0);
+        };
+
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('ended', handleEnded);
+
+        return () => {
+            audio.removeEventListener('timeupdate', handleTimeUpdate);
+            audio.removeEventListener('ended', handleEnded);
+        };
+    }, []);
+
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    const waveformData = waveform && waveform.length > 0 ? waveform : Array(40).fill(0.5);
+
+    return (
+        <div className={`flex items-center space-x-2 p-2 rounded-lg min-w-[250px] max-w-[350px] ${isMe ? 'bg-blue-600/20' : 'bg-gray-800/50'} group`}>
+            <button
+                onClick={togglePlay}
+                className={`p-2 rounded-full ${isMe ? 'bg-blue-500 hover:bg-blue-400' : 'bg-gray-700 hover:bg-gray-600'} transition-colors flex-shrink-0`}
+            >
+                {isPlaying ? (
+                    <Pause size={16} className="text-white fill-current" />
+                ) : (
+                    <Play size={16} className="text-white fill-current" />
+                )}
+            </button>
+
+            <div className="flex-1 flex flex-col space-y-1">
+                <div
+                    ref={waveformRef}
+                    onClick={handleWaveformClick}
+                    className="flex items-center h-8 gap-0.5 cursor-pointer"
+                    title="Click to seek"
+                >
+                    {waveformData.map((amplitude, i) => {
+                        const barProgress = (i / waveformData.length) * 100;
+                        const isActive = barProgress <= progress;
+                        return (
+                            <div
+                                key={i}
+                                className={`w-0.5 rounded-full transition-all ${isActive
+                                    ? (isMe ? 'bg-blue-300' : 'bg-blue-400')
+                                    : (isMe ? 'bg-blue-400/30' : 'bg-gray-600')
+                                    }`}
+                                style={{ height: `${Math.max(20, amplitude * 100)}%` }}
+                            />
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="flex items-center space-x-1">
+                <span className={`text-[10px] font-mono ${isMe ? 'text-blue-200' : 'text-gray-400'} flex-shrink-0`}>
+                    {formatTime(isPlaying ? currentTime : duration)}
+                </span>
+
+                {/* Playback Speed Control */}
+                <div className="relative">
+                    <button
+                        onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isMe ? 'bg-blue-500/30 text-blue-200 hover:bg-blue-500/50' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            } transition-colors`}
+                        title="Playback speed"
+                    >
+                        {playbackSpeed}x
+                    </button>
+
+                    {showSpeedMenu && (
+                        <div className="absolute bottom-full right-0 mb-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-10">
+                            {[1, 1.5, 2].map(speed => (
+                                <button
+                                    key={speed}
+                                    onClick={() => changeSpeed(speed)}
+                                    className={`block w-full px-3 py-1.5 text-xs text-left hover:bg-gray-800 transition-colors ${playbackSpeed === speed ? 'bg-blue-600 text-white' : 'text-gray-300'
+                                        }`}
+                                >
+                                    {speed}x
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Forward Button */}
+                {onForward && (
+                    <button
+                        onClick={onForward}
+                        className={`p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${isMe ? 'text-blue-200 hover:bg-blue-500/30' : 'text-gray-400 hover:bg-gray-700'
+                            }`}
+                        title="Forward voice message"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="17 11 12 6 7 11"></polyline>
+                            <polyline points="17 18 12 13 7 18"></polyline>
+                        </svg>
+                    </button>
+                )}
+            </div>
+
+            <audio
+                ref={audioRef}
+                src={`${API_URL}/media/download/${mediaId}?token=${token}`}
+                preload="metadata"
+            />
+        </div>
+    );
+};
+
 
 export default function Dashboard() {
     const { logout, user, token } = useAuth();
@@ -71,7 +242,17 @@ export default function Dashboard() {
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
     const [uploadingMedia, setUploadingMedia] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const timerRef = useRef<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Voice message forwarding state
+    const [showForwardModal, setShowForwardModal] = useState(false);
+    const [forwardingVoiceMessage, setForwardingVoiceMessage] = useState<{ mediaId: string, duration: number, waveform: number[] } | null>(null);
+    const [selectedForwardRecipients, setSelectedForwardRecipients] = useState<string[]>([]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -85,6 +266,90 @@ export default function Dashboard() {
             if (avatarPreview) URL.revokeObjectURL(avatarPreview);
         };
     }, [avatarPreview]);
+
+    // Handle recording timer
+    useEffect(() => {
+        if (isRecording) {
+            timerRef.current = setInterval(() => {
+                setRecordingDuration(prev => prev + 1);
+            }, 1000);
+        } else {
+            if (timerRef.current) clearInterval(timerRef.current);
+            setRecordingDuration(0);
+        }
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [isRecording]);
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                await sendVoiceMessage(audioBlob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+        } catch (error) {
+            console.error("Error accessing microphone:", error);
+            toast.error("Microphone access denied");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+            // Prevent onstop from sending
+            mediaRecorderRef.current.onstop = null;
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+            audioChunksRef.current = [];
+            // Stop tracks
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+    };
+
+    const sendVoiceMessage = async (blob: Blob) => {
+        if (!activeChat) return;
+        try {
+            setUploadingMedia(true);
+            const uploaded = await mediaService.uploadVoice(blob);
+            await sendMessage(activeChat, "", {
+                id: uploaded.id,
+                type: uploaded.mimeType,
+                filename: 'voice_message.ogg'
+            });
+        } catch (error) {
+            toast.error("Failed to send voice message");
+        } finally {
+            setUploadingMedia(false);
+        }
+    };
+
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
 
     // Fetch profile and all users
     useEffect(() => {
@@ -310,6 +575,27 @@ export default function Dashboard() {
         setInput('');
     };
 
+    const handleForwardVoice = async () => {
+        if (!forwardingVoiceMessage || selectedForwardRecipients.length === 0) return;
+
+        try {
+            for (const recipientId of selectedForwardRecipients) {
+                await sendMessage(recipientId, "", {
+                    id: forwardingVoiceMessage.mediaId,
+                    type: 'audio/ogg',
+                    filename: 'voice_message.ogg'
+                });
+            }
+            toast.success(`Voice message forwarded to ${selectedForwardRecipients.length} recipient(s)`);
+            setShowForwardModal(false);
+            setForwardingVoiceMessage(null);
+            setSelectedForwardRecipients([]);
+        } catch (error) {
+            toast.error("Failed to forward voice message");
+            console.error(error);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-900 text-white">
@@ -335,7 +621,7 @@ export default function Dashboard() {
                             {profile?.profilePic ? (
                                 <img src={profile.profilePic} alt="avatar" className="h-10 w-10 object-cover" />
                             ) : (
-                                profile?.fullName?.charAt(0) || <UserIcon className="h-5 w-5" />
+                                profile?.fullName?.charAt(0) || <User className="h-5 w-5" />
                             )}
                         </div>
                         <div className="hidden sm:block">
@@ -656,6 +942,8 @@ export default function Dashboard() {
                                                             value={editValue}
                                                             onChange={(e) => setEditValue(e.target.value)}
                                                             className="flex-1 bg-gray-900 border border-blue-500 rounded px-2 py-1 text-sm outline-none text-white"
+                                                            placeholder="Edit message..."
+                                                            title="Edit message"
                                                             autoFocus
                                                             onKeyDown={(e) => {
                                                                 if (e.key === 'Enter' && editValue.trim()) {
@@ -697,6 +985,22 @@ export default function Dashboard() {
                                                                             }}
                                                                         />
                                                                     </div>
+                                                                ) : (msg as any).media.type.startsWith('audio/') ? (
+                                                                    <VoiceMessagePlayer
+                                                                        mediaId={(msg as any).media.id}
+                                                                        duration={(msg as any).media.voiceMessage?.duration || 0}
+                                                                        waveform={(msg as any).media.voiceMessage?.waveform || []}
+                                                                        token={token || ''}
+                                                                        isMe={isMe}
+                                                                        onForward={() => {
+                                                                            setForwardingVoiceMessage({
+                                                                                mediaId: (msg as any).media.id,
+                                                                                duration: (msg as any).media.voiceMessage?.duration || 0,
+                                                                                waveform: (msg as any).media.voiceMessage?.waveform || []
+                                                                            });
+                                                                            setShowForwardModal(true);
+                                                                        }}
+                                                                    />
                                                                 ) : (
                                                                     <a
                                                                         href={`${API_URL}/media/download/${(msg as any).media.id}?token=${token || ''}`}
@@ -829,6 +1133,7 @@ export default function Dashboard() {
                                     type="file"
                                     ref={fileInputRef}
                                     className="hidden"
+                                    aria-label="Select file to attach"
                                     onChange={handleFileSelect}
                                 />
                                 <button
@@ -845,11 +1150,32 @@ export default function Dashboard() {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     placeholder="Type a secure message..."
+                                    title="Type a secure message"
                                     className="flex-1 bg-transparent py-2.5 text-sm focus:outline-none placeholder-gray-500"
                                 />
+                                {isRecording ? (
+                                    <button
+                                        type="button"
+                                        onClick={stopRecording}
+                                        className="bg-red-600 p-2 rounded-xl text-white hover:bg-red-500 transition-all shadow-lg active:scale-95"
+                                        title="Stop Recording"
+                                    >
+                                        <StopCircle className="h-4 w-4" />
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={startRecording}
+                                        disabled={uploadingMedia}
+                                        className={`p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-gray-700/50 transition-colors ${uploadingMedia ? 'animate-pulse' : ''}`}
+                                        title="Record Voice Message"
+                                    >
+                                        <Mic className="h-4 w-4" />
+                                    </button>
+                                )}
                                 <button
                                     type="submit"
-                                    disabled={!input.trim()}
+                                    disabled={!input.trim() || isRecording}
                                     className="bg-blue-600 p-2 rounded-xl text-white hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-lg active:scale-95"
                                     title="Send Message"
                                 >
@@ -861,7 +1187,7 @@ export default function Dashboard() {
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
                         <div className="h-24 w-24 bg-gradient-to-br from-gray-800 to-gray-900 rounded-full flex items-center justify-center mb-8 shadow-2xl border border-gray-700/50 animate-bounce-subtle">
-                            <UserIcon className="h-12 w-12 text-gray-700" />
+                            <User className="h-12 w-12 text-gray-700" />
                         </div>
                         <h2 className="text-2xl font-bold text-white mb-3">Welcome to Your Workspace</h2>
                         <p className="max-w-md text-sm text-gray-400 leading-relaxed">
@@ -1070,22 +1396,26 @@ export default function Dashboard() {
                         </div>
                         <form onSubmit={handleCreateGroup} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Group Name</label>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupName">Group Name</label>
                                 <input
+                                    id="groupName"
                                     type="text"
                                     value={groupName}
                                     onChange={(e) => setGroupName(e.target.value)}
                                     placeholder="Enter group name..."
+                                    title="Enter group name"
                                     className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                     required
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Description (Optional)</label>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="groupDesc">Description (Optional)</label>
                                 <textarea
+                                    id="groupDesc"
                                     value={groupDesc}
                                     onChange={(e) => setGroupDesc(e.target.value)}
                                     placeholder="What is this group about?"
+                                    title="Group description"
                                     className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none h-24"
                                 />
                             </div>
@@ -1125,12 +1455,14 @@ export default function Dashboard() {
                         </div>
                         <form onSubmit={handleJoinGroup} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1">Invite Code</label>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5 ml-1" htmlFor="inviteCode">Invite Code</label>
                                 <input
+                                    id="inviteCode"
                                     type="text"
                                     value={inviteCode}
                                     onChange={(e) => setInviteCode(e.target.value)}
                                     placeholder="Paste invite code here..."
+                                    title="Paste invite code"
                                     className="w-full bg-gray-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                     required
                                 />
@@ -1142,6 +1474,87 @@ export default function Dashboard() {
                                 Join Group
                             </button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Forward Voice Message Modal */}
+            {showForwardModal && forwardingVoiceMessage && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                    <div className="bg-gray-900 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gray-950/50">
+                            <h3 className="text-xl font-bold">Forward Voice Message</h3>
+                            <button onClick={() => {
+                                setShowForwardModal(false);
+                                setForwardingVoiceMessage(null);
+                                setSelectedForwardRecipients([]);
+                            }} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Close">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="mb-4">
+                                <VoiceMessagePlayer
+                                    mediaId={forwardingVoiceMessage.mediaId}
+                                    duration={forwardingVoiceMessage.duration}
+                                    waveform={forwardingVoiceMessage.waveform}
+                                    token={token || ''}
+                                    isMe={true}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1">Select Recipients</label>
+                                <div className="max-h-60 overflow-y-auto space-y-2 bg-gray-800/30 rounded-xl p-3">
+                                    {displayConversations.map((conv) => {
+                                        const isGroup = conv.type === 'GROUP';
+                                        let partnerId: string | null = null;
+                                        let displayName = '';
+
+                                        if (isGroup) {
+                                            partnerId = conv.id;
+                                            displayName = conv.name || 'Group';
+                                        } else {
+                                            const lm = conv.lastMessage;
+                                            if (lm && lm.senderId && lm.receiverId) {
+                                                partnerId = String(lm.senderId) === selfId ? String(lm.receiverId) : String(lm.senderId);
+                                            } else if (conv.participants && conv.participants.length > 0) {
+                                                const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
+                                                partnerId = p ? String(p.id) : null;
+                                            }
+                                            const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
+                                            displayName = partnerProfile?.fullName || partnerProfile?.email || 'Unknown';
+                                        }
+
+                                        if (!partnerId) return null;
+
+                                        return (
+                                            <label key={partnerId} className="flex items-center space-x-3 p-2 hover:bg-gray-700/50 rounded-lg cursor-pointer transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedForwardRecipients.includes(partnerId)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedForwardRecipients(prev => [...prev, partnerId!]);
+                                                        } else {
+                                                            setSelectedForwardRecipients(prev => prev.filter(id => id !== partnerId));
+                                                        }
+                                                    }}
+                                                    className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                                                />
+                                                <span className="text-sm">{displayName}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleForwardVoice}
+                                disabled={selectedForwardRecipients.length === 0}
+                                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98] mt-4"
+                            >
+                                Forward to {selectedForwardRecipients.length} recipient{selectedForwardRecipients.length !== 1 ? 's' : ''}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

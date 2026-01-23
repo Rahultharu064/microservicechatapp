@@ -34,10 +34,10 @@ model Thumbnail {
 }
 
 model VoiceMessage {
-  id            String  @id @default(uuid())
-  mediaId       String  @unique
+  id            String   @id @default(uuid())
+  mediaId       String   @unique
   duration      Float
-  waveform      String?
+  waveform      String?  @db.Text
   format        String
   convertedPath String?
 
