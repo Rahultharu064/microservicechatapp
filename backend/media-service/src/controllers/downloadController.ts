@@ -23,7 +23,6 @@ export const downloadMedia = async (req: AuthRequest, res: Response) => {
         const decryptedBuffer = decryptBuffer(encryptedBuffer, encryptionKey, media.iv);
 
         res.setHeader("Content-Type", media.mimeType);
-        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         // For images, allow inline display; for others, force download
         if (media.mimeType.startsWith('image/')) {
             res.setHeader("Content-Disposition", `inline; filename="${media.filename}"`);

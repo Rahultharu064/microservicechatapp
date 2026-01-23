@@ -7,6 +7,10 @@ export const SERVICE_ROUTES = {
         path: '/api/users',
         rewrite: { '^/api/users': '/users' },
     },
+    UPLOADS: {
+        path: '/api/users/uploads',
+        rewrite: { '^/api/users/uploads': '/uploads' },
+    },
     CHAT: {
         path: '/api/chat',
         rewrite: { '^/api/chat': '/api' },

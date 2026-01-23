@@ -8,7 +8,10 @@ const app = express();
 app.use(express.json());
 
 // Serve profile pictures
-app.use("/uploads", express.static(path.join(dirname(fileURLToPath(import.meta.url)), "../src/uploads")));
+app.use("/uploads", (req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+}, express.static(path.join(dirname(fileURLToPath(import.meta.url)), "../src/uploads")));
 
 // API routes
 app.use("/users", userRoutes);

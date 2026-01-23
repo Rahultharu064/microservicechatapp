@@ -15,7 +15,9 @@ import logger from '@shared/logger/logger.ts';
 const app = express();
 
 // Security and Monitoring
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(cors({
     origin: config.frontendUrl,
     credentials: true
@@ -31,6 +33,7 @@ app.use(authMiddleware);
 
 // Register Service Routes (Globally with pathFilter)
 app.use(createServiceProxy(config.services.auth, SERVICE_ROUTES.AUTH.rewrite, SERVICE_ROUTES.AUTH.path));
+app.use(createServiceProxy(config.services.user, SERVICE_ROUTES.UPLOADS.rewrite, SERVICE_ROUTES.UPLOADS.path));
 app.use(createServiceProxy(config.services.user, SERVICE_ROUTES.USERS.rewrite, SERVICE_ROUTES.USERS.path));
 app.use(createServiceProxy(config.services.chat, SERVICE_ROUTES.CHAT.rewrite, SERVICE_ROUTES.CHAT.path, true));
 app.use(createServiceProxy(config.services.notification, SERVICE_ROUTES.NOTIFICATIONS.rewrite, SERVICE_ROUTES.NOTIFICATIONS.path));
