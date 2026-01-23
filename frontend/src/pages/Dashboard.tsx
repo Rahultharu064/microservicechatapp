@@ -5,14 +5,17 @@ import userService, { type UserProfile } from "../services/userService";
 import {
     LogOut, User as UserIcon, UserPlus, Shield,
     Send, Search, Plus, X, Settings, Pencil, Trash2,
-    Users, Link as LinkIcon, Copy
+    Users, Link as LinkIcon, Copy, Paperclip, FileText
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { decryptMessage } from "../utils/encryption";
+import mediaService from "../services/mediaService";
 import { useNotifications } from "../context/NotificationContext";
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 export default function Dashboard() {
-    const { logout, user } = useAuth();
+    const { logout, user, token } = useAuth();
     const {
         conversations,
         activeChat,
@@ -42,6 +45,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
     const [decryptedMessages, setDecryptedMessages] = useState<Record<string, string>>({});
+    const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
     const [showUserSearch, setShowUserSearch] = useState(false);
     const [showCreateGroup, setShowCreateGroup] = useState(false);
     const [showJoinGroup, setShowJoinGroup] = useState(false);
@@ -66,6 +70,8 @@ export default function Dashboard() {
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -265,6 +271,34 @@ export default function Dashboard() {
             setInviteCode('');
         } catch (error) {
             // Toast handled in context
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !activeChat) return;
+        const file = e.target.files[0];
+
+        try {
+            setUploadingMedia(true);
+            toast.loading("Uploading...", { id: "upload-toast" });
+
+            const uploaded = await mediaService.uploadFile(file);
+
+            toast.dismiss("upload-toast");
+            toast.success("File uploaded");
+
+            await sendMessage(activeChat, "", {
+                id: uploaded.id,
+                type: uploaded.mimeType,
+                filename: uploaded.filename
+            });
+        } catch (error) {
+            toast.dismiss("upload-toast");
+            toast.error("Failed to upload file");
+            console.error(error);
+        } finally {
+            setUploadingMedia(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
 
@@ -646,15 +680,55 @@ export default function Dashboard() {
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                                                        {msg.status === 'DELETED' ? (
-                                                            <span className="italic opacity-50 flex items-center gap-1.5">
-                                                                <Trash2 size={12} className="opacity-50" /> Message deleted
-                                                            </span>
-                                                        ) : (
-                                                            decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>
+                                                    <div className="flex flex-col">
+                                                        {(msg as any).media && (
+                                                            <div className="mb-2">
+                                                                {(msg as any).media.type.startsWith('image/') && !failedImages.has((msg as any).media.id) ? (
+                                                                    <div
+                                                                        className="rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity border border-gray-700/50"
+                                                                        onClick={() => window.open(`${API_URL}/media/download/${(msg as any).media.id}?token=${token || ''}`, '_blank')}
+                                                                    >
+                                                                        <img
+                                                                            src={`${API_URL}/media/download/${(msg as any).media.id}?token=${token || ''}`}
+                                                                            alt="attachment"
+                                                                            className="max-w-xs max-h-60 object-cover"
+                                                                            onError={(e) => {
+                                                                                setFailedImages(prev => new Set(prev).add((msg as any).media.id));
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <a
+                                                                        href={`${API_URL}/media/download/${(msg as any).media.id}?token=${token || ''}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="flex items-center space-x-2 bg-gray-900/50 p-3 rounded-lg hover:bg-gray-700 transition-colors border border-gray-600"
+                                                                    >
+                                                                        <div className="bg-gray-800 p-2 rounded">
+                                                                            <FileText size={20} className="text-blue-400" />
+                                                                        </div>
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-sm font-medium truncate max-w-[150px] text-blue-300 underline">
+                                                                                {(msg as any).media.filename}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-gray-500 uppercase">
+                                                                                {(msg as any).media.type.split('/')[1] || 'FILE'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </a>
+                                                                )}
+                                                            </div>
                                                         )}
-                                                    </p>
+                                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                                            {msg.status === 'DELETED' ? (
+                                                                <span className="italic opacity-50 flex items-center gap-1.5">
+                                                                    <Trash2 size={12} className="opacity-50" /> Message deleted
+                                                                </span>
+                                                            ) : (
+                                                                decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
                                                 )}
                                             </div>
                                             <div className="flex items-center mt-1 space-x-2 opacity-0 group-hover:opacity-100 transition-opacity px-1">
@@ -751,6 +825,21 @@ export default function Dashboard() {
                         {/* Message Input */}
                         <footer className="p-4 bg-gray-900/60 backdrop-blur-md border-t border-gray-800">
                             <form onSubmit={handleSend} className="flex items-center space-x-3 bg-gray-800/80 rounded-2xl px-4 py-1.5 border border-gray-700/50 focus-within:border-blue-500/50 transition-all shadow-inner">
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploadingMedia}
+                                    className={`p-1.5 rounded-lg text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 transition-colors ${uploadingMedia ? 'animate-pulse' : ''}`}
+                                    title="Attach File"
+                                >
+                                    <Paperclip className="h-4 w-4" />
+                                </button>
                                 <input
                                     type="text"
                                     value={input}

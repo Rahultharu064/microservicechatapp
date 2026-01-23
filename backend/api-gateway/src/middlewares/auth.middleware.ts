@@ -16,6 +16,7 @@ const publicPaths = [
     '/api/notifications/health',
     '/api/chat/health',
     '/api/users/health',
+    '/api/media/download',
     '/socket.io',
 ];
 

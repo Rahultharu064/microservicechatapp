@@ -1,4 +1,4 @@
-import type{ Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export interface AuthRequest extends Request {
@@ -10,7 +10,12 @@ export const authMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  const token = req.headers.authorization?.split(" ")[1];
+  let token = req.headers.authorization?.split(" ")[1];
+
+  if (!token && req.query.token) {
+    token = req.query.token as string;
+  }
+
   if (!token) return res.sendStatus(401);
 
   try {

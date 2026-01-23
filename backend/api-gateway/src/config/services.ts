@@ -17,7 +17,7 @@ export const SERVICE_ROUTES = {
     },
     MEDIA: {
         path: '/api/media',
-        rewrite: { '^/api/media': '/media' },
+        rewrite: { '^/api/media': '/api/media' },
     },
     SEARCH: {
         path: '/api/search',

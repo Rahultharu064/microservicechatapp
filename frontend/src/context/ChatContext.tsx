@@ -13,7 +13,8 @@ interface ChatContextType {
     activeChat: string | null;
     messages: Message[];
     setActiveChat: (chatId: string | null) => void;
-    sendMessage: (to: string, text: string) => Promise<void>;
+    sendMessage: (to: string, text: string, media?: { id: string, type: string, filename: string }) => Promise<void>;
+
     editMessage: (messageId: string, newText: string) => Promise<void>;
     deleteMessage: (messageId: string) => Promise<void>;
     loadMore: () => Promise<void>;
@@ -353,11 +354,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [activeChat, conversations.length, socket]);
 
-    const sendMessage = async (to: string, text: string) => {
+    const sendMessage = async (to: string, text: string, media?: { id: string, type: string, filename: string }) => {
         if (!socket || !user?.id) return;
 
         try {
-            const encrypted = await encryptMessage(text);
+            const encrypted = await encryptMessage(text || 'Attachment'); // Encrypt placeholder if text is empty
             const conversation = conversations.find(c => String(c.id) === String(to));
             const isGroup = conversation?.type === 'GROUP';
 
@@ -371,7 +372,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 iv: encrypted.iv,
                 keyVersion: isGroup ? 1 : undefined,
                 status: "SENT",
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                media // Add media to optimistic message
             } as any;
 
             setMessages(prev => [...prev, optimisticMsg]);
@@ -381,12 +383,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     groupId: to,
                     cipherText: encrypted.cipherText,
                     iv: encrypted.iv,
-                    keyVersion: 1
+                    keyVersion: 1,
+                    media // Send media metadata
                 });
             } else {
                 socket.emit("message:send", {
                     to,
-                    ...encrypted
+                    ...encrypted,
+                    media // Send media metadata
                 });
             }
         } catch (err) {

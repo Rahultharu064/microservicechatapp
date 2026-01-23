@@ -5,10 +5,13 @@ import downloadRoute from "./routes/downloadRoute.ts";
 import chunkRoute from "./routes/chunkRoute.ts";
 import voiceRoute from "./routes/voiceRoute.ts";
 
+import cors from "cors";
+
 dotenv.config();
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 // Routes

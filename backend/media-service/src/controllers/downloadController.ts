@@ -23,7 +23,13 @@ export const downloadMedia = async (req: AuthRequest, res: Response) => {
         const decryptedBuffer = decryptBuffer(encryptedBuffer, encryptionKey, media.iv);
 
         res.setHeader("Content-Type", media.mimeType);
-        res.setHeader("Content-Disposition", `attachment; filename="${media.filename}"`);
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        // For images, allow inline display; for others, force download
+        if (media.mimeType.startsWith('image/')) {
+            res.setHeader("Content-Disposition", `inline; filename="${media.filename}"`);
+        } else {
+            res.setHeader("Content-Disposition", `attachment; filename="${media.filename}"`);
+        }
         res.send(decryptedBuffer);
     } catch (error) {
         console.error("Download error:", error);

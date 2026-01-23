@@ -4,7 +4,7 @@ import { downloadMedia, getThumbnail } from "../controllers/downloadController.t
 
 const router = Router();
 
-router.get("/:id", authMiddleware as any, downloadMedia as any);
-router.get("/:id/thumbnail/:size", authMiddleware as any, getThumbnail as any);
+router.get("/:id", downloadMedia as any);
+router.get("/:id/thumbnail/:size", getThumbnail as any);
 
 export default router;

@@ -10,7 +10,7 @@ export const createConnectRabbitMQ = async (): Promise<amqp.Channel> => {
         connection.on("error", (err) => logger.error("RabbitMQ Connection Error", err));
         connection.on("close", () => logger.warn("RabbitMQ Connection Closed"));
 
-        logger.info("❤️RabbitMQ connected successfully");
+        logger.info("❤️ RabbitMQ connected successfully");
         channel = await connection.createChannel();
         channel.on("error", (err) => logger.error("RabbitMQ Channel Error", err));
         return channel;

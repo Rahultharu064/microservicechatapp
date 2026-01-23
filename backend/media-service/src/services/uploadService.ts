@@ -12,21 +12,17 @@ export const handleUpload = async (
   ownerId: string
 ) => {
   // Virus scan
-  
- 
+
+
 
   // Read file into buffer
   const buffer = await fs.readFile(file.path);
 
   // Encryption
- const encryptionKey = randomBytes(32);
-const { encrypted, iv } = encryptBuffer(buffer, encryptionKey);
-
-// Convert iv to string (HEX)
-const ivHex = Buffer.from(iv).toString("hex");
-
- // Storage
-const storagePath = await saveFile(file.filename, encrypted);
+  const encryptionKey = randomBytes(32);
+  const { encrypted, iv } = encryptBuffer(buffer, encryptionKey);
+  // Storage
+  const storagePath = await saveFile(file.filename, encrypted);
 
   // Database Entry
   const media = await prismaClient.media.create({
@@ -37,7 +33,7 @@ const storagePath = await saveFile(file.filename, encrypted);
       size: file.size,
       storagePath,
       encryptedKey: encryptionKey.toString("hex"),
-      iv: ivHex,  
+      iv: iv,
     },
   });
 
