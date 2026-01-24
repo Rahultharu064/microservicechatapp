@@ -257,6 +257,7 @@ export default function Dashboard() {
     const videoRecorderRef = useRef<MediaRecorder | null>(null);
     const videoChunksRef = useRef<Blob[]>([]);
     const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+    const profileInputRef = useRef<HTMLInputElement>(null);
 
     // Voice message forwarding state
     const [showForwardModal, setShowForwardModal] = useState(false);
@@ -619,6 +620,7 @@ export default function Dashboard() {
     };
 
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        e.stopPropagation();
         if (!e.target.files || e.target.files.length === 0 || !activeChat) return;
         const file = e.target.files[0];
 
@@ -1084,7 +1086,7 @@ export default function Dashboard() {
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col">
-                                                        {(msg as any).media && (
+                                                        {msg.status !== 'DELETED' && (msg as any).media && (
                                                             <div className="mb-2">
                                                                 {(msg as any).media.type.startsWith('image/') && !failedImages.has((msg as any).media.id) ? (
                                                                     <div
@@ -1255,6 +1257,7 @@ export default function Dashboard() {
                             <form onSubmit={handleSend} className="flex items-center space-x-3 bg-gray-800/80 rounded-2xl px-4 py-1.5 border border-gray-700/50 focus-within:border-blue-500/50 transition-all shadow-inner">
                                 <input
                                     type="file"
+                                    id="chat-file-input"
                                     ref={fileInputRef}
                                     className="hidden"
                                     aria-label="Select file to attach"
@@ -1362,7 +1365,7 @@ export default function Dashboard() {
                                 </div>
 
                                 <div className="flex flex-col items-center mb-8">
-                                    <div className="relative group cursor-pointer" onClick={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}>
+                                    <div className="relative group cursor-pointer" onClick={(e) => { e.preventDefault(); e.stopPropagation(); profileInputRef.current?.click(); }}>
                                         <div className="h-28 w-28 rounded-3xl overflow-hidden bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-4xl font-bold text-white shadow-2xl transition-transform group-hover:scale-105 duration-300">
                                             {avatarPreview ? (
                                                 <img src={avatarPreview} alt="preview" className="h-full w-full object-cover" />
@@ -1378,9 +1381,12 @@ export default function Dashboard() {
                                     </div>
                                     <input
                                         type="file"
+                                        id="profile-pic-input"
+                                        ref={profileInputRef}
                                         accept="image/*"
                                         className="hidden"
                                         onChange={(e) => {
+                                            e.stopPropagation();
                                             const file = e.target.files?.[0] || null;
                                             setAvatarFile(file);
                                             if (avatarPreview) URL.revokeObjectURL(avatarPreview);
@@ -1389,7 +1395,10 @@ export default function Dashboard() {
                                     />
                                     {avatarFile && !uploadingAvatar && (
                                         <button
-                                            onClick={async () => {
+                                            type="button"
+                                            onClick={async (e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
                                                 try {
                                                     setUploadingAvatar(true);
                                                     const fd = new FormData();
@@ -1428,12 +1437,12 @@ export default function Dashboard() {
                                                     onKeyDown={(e) => e.key === 'Enter' && handleUpdateProfile()}
                                                     autoFocus
                                                 />
-                                                <button onClick={handleUpdateProfile} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">OK</button>
+                                                <button type="button" onClick={handleUpdateProfile} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all">OK</button>
                                             </div>
                                         ) : (
                                             <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
                                                 <p className="text-sm font-bold text-white">{profile?.fullName || 'Not set'}</p>
-                                                <button onClick={() => { setEditName(profile?.fullName || ''); setIsEditingName(true); }} className="text-gray-500 hover:text-blue-400 transition-colors">
+                                                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditName(profile?.fullName || ''); setIsEditingName(true); }} className="text-gray-400 hover:text-blue-400 transition-colors">
                                                     <Pencil size={14} />
                                                 </button>
                                             </div>
