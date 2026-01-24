@@ -218,25 +218,25 @@ export const groupChatSocket = (io: Server) => {
     // Handle group message delete
     socket.on("group:message:delete", async (payload: { messageId: string, groupId: string }) => {
       try {
-        const message = await prisma.groupMessage.update({
-          where: { id: payload.messageId, senderId: user.id, groupId: payload.groupId },
-          data: {
-            status: "DELETED" as any, // Using any because generate might not have finished
-            cipherText: "MESSAGE_DELETED",
-            iv: "DELETED"
-          }
+        // Complete delete: remove related data
+        await Promise.all([
+          (prisma as any).messageReaction.deleteMany({ where: { messageId: payload.messageId } }),
+          (prisma as any).messageAttachment.deleteMany({ where: { messageId: payload.messageId } }),
+          (prisma as any).messageReceipt.deleteMany({ where: { messageId: payload.messageId } })
+        ]).catch(err => logger.error("Group orphan cleanup failed", err));
+
+        await prisma.groupMessage.delete({
+          where: { id: payload.messageId, senderId: user.id, groupId: payload.groupId }
         });
 
         const deleteEvent = {
-          messageId: message.id,
-          groupId: message.groupId,
-          status: "DELETED"
+          messageId: payload.messageId,
+          groupId: payload.groupId
         };
 
-        io.to(`group:${payload.groupId}`).emit("group:message:receive", { ...message, status: "DELETED" }); // Re-emit to update UI
         io.to(`group:${payload.groupId}`).emit("group:message:delete", deleteEvent);
 
-        logger.info("Group message deleted", { userId: user.id, messageId: message.id });
+        logger.info("Group message completely deleted (hard delete)", { userId: user.id, messageId: payload.messageId });
       } catch (err) {
         logger.error("Failed to delete group message", err);
       }

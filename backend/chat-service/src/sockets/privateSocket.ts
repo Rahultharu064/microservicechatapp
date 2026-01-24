@@ -242,25 +242,26 @@ export const privateChatSocket = (io: Server) => {
     // Handle message delete
     socket.on("message:delete", async (payload: { messageId: string, to: string }) => {
       try {
-        // Soft delete: update status to DELETED and clear content
-        const message = await (prisma.privateMessage as any).update({
-          where: { id: payload.messageId, senderId: user.id },
-          data: {
-            status: "DELETED",
-            cipherText: "MESSAGE_DELETED",
-            iv: "DELETED"
-          }
+        // Complete delete: remove related data first if no FK relations with cascade
+        await Promise.all([
+          (prisma as any).messageReaction.deleteMany({ where: { messageId: payload.messageId } }),
+          (prisma as any).messageAttachment.deleteMany({ where: { messageId: payload.messageId } }),
+          (prisma as any).messageReceipt.deleteMany({ where: { messageId: payload.messageId } }),
+          (prisma as any).voicePlaybackPosition.deleteMany({ where: { voiceMessageId: payload.messageId } })
+        ]).catch(err => logger.error("Orphan cleanup failed", err));
+
+        await (prisma.privateMessage as any).delete({
+          where: { id: payload.messageId, senderId: user.id }
         });
 
         const deleteEvent = {
-          messageId: message.id,
-          status: "DELETED"
+          messageId: payload.messageId
         };
 
         io.to(payload.to).emit("message:delete", deleteEvent);
         socket.emit("message:delete", deleteEvent);
 
-        logger.info("Private message deleted", { userId: user.id, messageId: message.id });
+        logger.info("Private message completely deleted (hard delete)", { userId: user.id, messageId: payload.messageId });
       } catch (err) {
         logger.error("Failed to delete private message", err);
       }

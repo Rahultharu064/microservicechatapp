@@ -229,16 +229,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setMessages(prev => prev.map(m => m.id === messageId ? { ...m, cipherText, iv } : m));
             });
 
-            newSocket.on("message:delete", ({ messageId, status }: { messageId: string, status: string }) => {
-                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: status as any, cipherText: 'MESSAGE_DELETED', iv: 'DELETED' } : m));
+            newSocket.on("message:delete", ({ messageId }: { messageId: string }) => {
+                setMessages(prev => prev.filter(m => m.id !== messageId));
             });
 
             newSocket.on("group:message:edit", ({ messageId, cipherText, iv }: { messageId: string, cipherText: string, iv: string }) => {
                 setMessages(prev => prev.map(m => m.id === messageId ? { ...m, cipherText, iv } : m));
             });
 
-            newSocket.on("group:message:delete", ({ messageId, status }: { messageId: string, status: string }) => {
-                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: status as any, cipherText: 'MESSAGE_DELETED', iv: 'DELETED' } : m));
+            newSocket.on("group:message:delete", ({ messageId }: { messageId: string }) => {
+                setMessages(prev => prev.filter(m => m.id !== messageId));
             });
 
             newSocket.on("group:message:receive", (message: Message) => {
@@ -544,7 +544,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 });
             }
             // Optimistic update
-            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, status: "DELETED" as any, cipherText: 'MESSAGE_DELETED', iv: 'DELETED' } : m));
+            setMessages(prev => prev.filter(m => m.id !== messageId));
         } catch (err) {
             console.error("Failed to delete message", err);
             toast.error("Failed to delete message");

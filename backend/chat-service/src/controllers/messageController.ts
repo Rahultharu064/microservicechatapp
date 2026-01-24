@@ -29,6 +29,7 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
                 { createdAt: anchorTime, id: { lt: beforeId as string } },
               ],
             },
+            { status: { not: "DELETED" as any } },
           ],
         },
         orderBy: [
@@ -44,6 +45,7 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
             { senderId: userId, receiverId: otherIdStr },
             { senderId: otherIdStr, receiverId: userId },
           ],
+          status: { not: "DELETED" as any },
         },
         orderBy: [
           { createdAt: "desc" },
@@ -103,7 +105,10 @@ export const getGroupMessages = async (req: Request, res: Response) => {
 
     const groupIdStr = groupId as string;
     const messages = await prisma.groupMessage.findMany({
-      where: { groupId: groupIdStr },
+      where: {
+        groupId: groupIdStr,
+        status: { not: "DELETED" as any }
+      },
       include: {
         sender: {
           select: {

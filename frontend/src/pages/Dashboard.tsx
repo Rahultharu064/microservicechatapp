@@ -707,6 +707,24 @@ export default function Dashboard() {
         }
     };
 
+    const activeConversation = conversations.find(c =>
+        String(c.id) === String(activeChat) ||
+        c.participants.some(p => String(p.id) === String(activeChat))
+    );
+
+    // Better otherUser resolution: check allUsers first, then fallback to activeConversation participants
+    const otherUser = useMemo(() => {
+        if (!activeChat) return null;
+        const found = allUsers.find(u => String(u.id) === String(activeChat));
+        if (found) return found;
+
+        if (activeConversation && activeConversation.type !== 'GROUP') {
+            const p = activeConversation.participants.find(p => String(p.id) === String(activeChat));
+            if (p) return { id: p.id, fullName: p.fullName, profilePic: p.profilePic, email: '' } as UserProfile;
+        }
+        return null;
+    }, [activeChat, allUsers, activeConversation]);
+
     if (loading) {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-900 text-white">
@@ -714,12 +732,6 @@ export default function Dashboard() {
             </div>
         );
     }
-
-    const activeConversation = conversations.find(c =>
-        String(c.id) === String(activeChat) ||
-        c.participants.some(p => String(p.id) === String(activeChat))
-    );
-    const otherUser = activeConversation?.participants.find(p => String(p.id) === String(activeChat)) || allUsers.find(u => String(u.id) === String(activeChat));
 
     return (
         <div className="flex h-screen bg-gray-950 text-white overflow-hidden">
@@ -851,9 +863,16 @@ export default function Dashboard() {
                                     const p = conv.participants.find(p => String(p.id) !== selfId) || conv.participants[0];
                                     partnerId = p ? String(p.id) : null;
                                 }
+
                                 const partnerProfile = allUsers.find(u => String(u.id) === String(partnerId));
-                                displayName = partnerProfile?.fullName || partnerProfile?.email || 'Unknown';
-                                displayPic = partnerProfile?.profilePic || undefined;
+                                if (partnerProfile) {
+                                    displayName = partnerProfile.fullName;
+                                    displayPic = partnerProfile.profilePic;
+                                } else {
+                                    const participant = conv.participants.find(p => String(p.id) === String(partnerId));
+                                    displayName = participant?.fullName || 'User';
+                                    displayPic = participant?.profilePic;
+                                }
                             }
 
                             if (!partnerId) return null;
@@ -914,8 +933,8 @@ export default function Dashboard() {
                         <header className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/40 backdrop-blur-md sticky top-0 z-10 transition-all">
                             <div className="flex items-center space-x-3">
                                 <div className="h-11 w-11 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center font-bold text-xl shadow-2xl border border-white/5">
-                                    {activeConversation?.name ? (
-                                        activeConversation.name.charAt(0)
+                                    {activeConversation?.type === 'GROUP' ? (
+                                        activeConversation.name?.charAt(0) || 'G'
                                     ) : otherUser?.profilePic ? (
                                         <img src={`${API_URL}/users/uploads/${otherUser.profilePic}`} alt="avatar" className="h-full w-full object-cover" />
                                     ) : (
@@ -1150,19 +1169,13 @@ export default function Dashboard() {
                                                             </div>
                                                         )}
                                                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                                                            {msg.status === 'DELETED' ? (
-                                                                <span className="italic opacity-50 flex items-center gap-1.5">
-                                                                    <Trash2 size={12} className="opacity-50" /> Message deleted
-                                                                </span>
-                                                            ) : (
-                                                                decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>
-                                                            )}
+                                                            {decryptedMessages[msg.id] === 'MESSAGE_DELETED' ? '' : (decryptedMessages[msg.id] || <span className="italic opacity-50">Decrypting...</span>)}
                                                         </p>
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="flex items-center mt-1 space-x-2 opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                                                {isMe && msg.status !== 'DELETED' && !editingMessageId && (
+                                            <div className="flex items-center mt-1 space-x-2 opacity-0 group-hover:opacity-100 transition-opacity px-1 min-h-[24px]">
+                                                {isMe && !editingMessageId && (
                                                     <div className="flex items-center space-x-1 mr-2 bg-gray-800/50 rounded-lg px-1 py-0.5 border border-gray-700/50">
                                                         <button
                                                             onClick={() => {
