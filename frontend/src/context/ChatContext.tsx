@@ -6,6 +6,7 @@ import type { Message, Conversation } from "../services/chatService";
 import { encryptMessage, decryptMessage } from "../utils/encryption";
 import { v4 as uuidv4 } from 'uuid';
 import toast from "react-hot-toast";
+import { db } from "../services/db";
 
 interface ChatContextType {
     socket: Socket | null;
@@ -26,6 +27,7 @@ interface ChatContextType {
     createGroup: (name: string, description?: string, isPublic?: boolean) => Promise<any>;
     joinGroup: (inviteCode: string) => Promise<any>;
     refreshConversations: () => Promise<void>;
+    searchLocalMessages: (query: string, chatId?: string) => Promise<any[]>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -147,16 +149,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 } else if (!isOutgoing) {
                     // Show notification for incoming messages from other chats
                     decryptMessage(message.cipherText, message.iv)
-                        .then(text => {
+                        .then(async text => {
                             toast.success(`New message from ${message.senderId}: ${text}`, {
                                 icon: '💬',
                                 duration: 4000
                             });
-                            // Optional: play notification sound
+
+                            // Index incoming message
+                            await db.messages.put({
+                                messageId: message.id,
+                                chatId: String(otherPartyId),
+                                senderId: String(message.senderId),
+                                content: text,
+                                timestamp: new Date(message.createdAt),
+                                type: 'private'
+                            });
                         })
                         .catch(() => {
                             toast.success(`New message from ${message.senderId}`, { icon: '💬' });
                         });
+                }
+
+                // If it's the active chat, we should also index it if it's not outgoing (outgoing is indexed in sendMessage)
+                if (currentActive && otherPartyId && String(currentActive) === String(otherPartyId) && !isOutgoing) {
+                    decryptMessage(message.cipherText, message.iv).then(async text => {
+                        await db.messages.put({
+                            messageId: message.id,
+                            chatId: String(otherPartyId),
+                            senderId: String(message.senderId),
+                            content: text,
+                            timestamp: new Date(message.createdAt),
+                            type: 'private'
+                        });
+                    }).catch(() => { });
                 }
 
                 // Update conversations list using the other participant in the conversation
@@ -392,6 +417,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     ...encrypted,
                     media // Send media metadata
                 });
+
+                // Index outgoing message
+                await db.messages.put({
+                    messageId: tempId, // Use tempId for now, update on ack if needed
+                    chatId: String(to),
+                    senderId: String(user.id),
+                    content: text,
+                    timestamp: new Date(),
+                    type: 'private'
+                });
             }
         } catch (err) {
             console.error("Failed to send message", err);
@@ -520,6 +555,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             // Optimistic update
             setMessages(prev => prev.map(m => m.id === messageId ? { ...m, ...encrypted } : m));
+
+            // Update local index
+            const existing = await db.messages.where('messageId').equals(messageId).first();
+            if (existing) {
+                await db.messages.update(existing.id!, {
+                    content: newText
+                });
+            }
         } catch (err) {
             console.error("Failed to edit message", err);
             toast.error("Failed to edit message");
@@ -545,6 +588,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             // Optimistic update
             setMessages(prev => prev.filter(m => m.id !== messageId));
+
+            // Delete from local index
+            await db.messages.where('messageId').equals(messageId).delete();
         } catch (err) {
             console.error("Failed to delete message", err);
             toast.error("Failed to delete message");
@@ -561,6 +607,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }));
         } catch (err) {
             console.error("Failed to refresh conversations", err);
+        }
+    };
+
+    const searchLocalMessages = async (query: string, chatId?: string) => {
+        if (!query.trim()) return [];
+        try {
+            const normalizedQuery = query.toLowerCase();
+            let collection = db.messages.filter(m =>
+                m.content.toLowerCase().includes(normalizedQuery)
+            );
+            if (chatId) {
+                collection = collection.filter(m => m.chatId === chatId);
+            }
+            return await collection.toArray();
+        } catch (err) {
+            console.error("Local search failed", err);
+            return [];
         }
     };
 
@@ -582,7 +645,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             joinGroup,
             editMessage,
             deleteMessage,
-            refreshConversations
+            refreshConversations,
+            searchLocalMessages
         }}>
             {children}
         </ChatContext.Provider>

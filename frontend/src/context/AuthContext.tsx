@@ -1,6 +1,7 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import authService from "../services/authService";
+import { requestNotificationPermission } from "../services/firebase";
 
 export interface User {
     id: string;
@@ -36,6 +37,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const userId = localStorage.getItem("userId");
         return !!token && !!userId;
     });
+
+    useEffect(() => {
+        if (isAuthenticated && token) {
+            requestNotificationPermission(token);
+        }
+    }, [isAuthenticated, token]);
 
     const login = async (email: string) => {
         await authService.login(email);

@@ -3,6 +3,8 @@ import type { AuthRequest } from "../types/userType.ts";
 import { updateUserSchema } from "../validators/userValidator.ts";
 import * as userService from "../services/userService.ts";
 import logger from "../../../shared/src/logger/logger.ts";
+import { publishToQueue } from "../../../shared/src/rabbitmq/connection.ts";
+import { QUEUES } from "../../../shared/src/constants/queues.ts";
 
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
@@ -27,6 +29,26 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     res.json(updated);
   } catch (error) {
     logger.error("Error in updateProfile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const registerFcmToken = async (req: AuthRequest, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: "Token is required" });
+
+    await userService.updateUser(req.user!.id, { fcmToken: token });
+
+    // Publish event for notification service
+    await publishToQueue(QUEUES.USER_FCM_TOKEN_UPDATED, {
+      userId: req.user!.id,
+      fcmToken: token
+    });
+
+    res.json({ message: "FCM token registered successfully" });
+  } catch (error) {
+    logger.error("Error in registerFcmToken:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

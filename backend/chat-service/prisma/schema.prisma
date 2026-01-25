@@ -161,6 +161,7 @@ model user {
   status          user_status         @default(ACTIVE)
   isEmailVerified Boolean             @default(false)
   role            user_role           @default(USER)
+  fcmToken        String?
   lastSeen        DateTime?          @default(now())
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
@@ -199,4 +200,37 @@ enum user_status {
 enum user_role {
   USER
   ADMIN
+}
+
+// Merged from Notification Service to allow single-push restoration
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      String?          @db.Text
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  enabledTypes String
+  muteUntil    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("notification_preferences")
+}
+
+enum NotificationType {
+  MESSAGE
+  MENTION
+  GROUP_INVITE
+  SYSTEM
 }

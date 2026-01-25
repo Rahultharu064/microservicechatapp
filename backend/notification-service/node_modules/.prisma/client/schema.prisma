@@ -38,3 +38,10 @@ enum NotificationType {
   GROUP_INVITE
   SYSTEM
 }
+
+model User {
+  id       String  @id
+  fcmToken String?
+
+  @@map("users")
+}

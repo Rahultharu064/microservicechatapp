@@ -2,5 +2,6 @@ export const QUEUES = {
     SEND_OTP: "SEND_OTP",
     NOTIFY_USER: "NOTIFY_USER",
     USER_CREATED: "USER_CREATED",
+    USER_FCM_TOKEN_UPDATED: "USER_FCM_TOKEN_UPDATED",
 };
 //# sourceMappingURL=queues.js.map

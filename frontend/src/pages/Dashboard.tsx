@@ -203,7 +203,8 @@ export default function Dashboard() {
         createGroup,
         joinGroup,
         editMessage,
-        deleteMessage
+        deleteMessage,
+        searchLocalMessages
     } = useChat();
 
     const {
@@ -263,6 +264,11 @@ export default function Dashboard() {
     const [showForwardModal, setShowForwardModal] = useState(false);
     const [forwardingVoiceMessage, setForwardingVoiceMessage] = useState<{ mediaId: string, duration: number, waveform: number[] } | null>(null);
     const [selectedForwardRecipients, setSelectedForwardRecipients] = useState<string[]>([]);
+
+    const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+    const [messageSearchQuery, setMessageSearchQuery] = useState('');
+    const [messageSearchResults, setMessageSearchResults] = useState<any[]>([]);
+    const [isSearchingLocal, setIsSearchingLocal] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -662,6 +668,24 @@ export default function Dashboard() {
         setInput('');
     };
 
+    const handleMessageSearch = async (query: string) => {
+        setMessageSearchQuery(query);
+        if (!query.trim()) {
+            setMessageSearchResults([]);
+            return;
+        }
+
+        setIsSearchingLocal(true);
+        try {
+            const results = await searchLocalMessages(query, activeChat || undefined);
+            setMessageSearchResults(results);
+        } catch (err) {
+            console.error("Local search error", err);
+        } finally {
+            setIsSearchingLocal(false);
+        }
+    };
+
     const handleForwardVoice = async () => {
         if (!forwardingVoiceMessage || selectedForwardRecipients.length === 0) return;
 
@@ -1002,35 +1026,88 @@ export default function Dashboard() {
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                            {/* Sidebar Toggle Buttons */}
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setShowUserSearch(true)}
-                                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors text-blue-400"
-                                    title="Start New Chat"
-                                >
-                                    <UserPlus size={20} />
-                                </button>
-                                <button
-                                    onClick={() => setShowProfile(!showProfile)}
-                                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors text-gray-400"
-                                    title="View Profile"
-                                >
-                                    <Settings size={20} />
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        localStorage.clear();
-                                        window.location.href = '/login';
-                                    }}
-                                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors text-red-400"
-                                    title="Logout"
-                                >
-                                    <LogOut size={20} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {isSearchingMessages ? (
+                                        <div className="flex items-center bg-gray-800 rounded-lg px-2 py-1 border border-blue-500/50 animate-in fade-in slide-in-from-right-2 duration-200">
+                                            <Search size={14} className="text-gray-400 mr-2" />
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={messageSearchQuery}
+                                                onChange={(e) => handleMessageSearch(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Escape' && setIsSearchingMessages(false)}
+                                                placeholder="Search messages..."
+                                                className="bg-transparent text-xs outline-none w-40 text-white"
+                                            />
+                                            <button onClick={() => { setIsSearchingMessages(false); setMessageSearchQuery(''); setMessageSearchResults([]); }} className="text-gray-400 hover:text-white">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setIsSearchingMessages(true)}
+                                            className="p-2 hover:bg-gray-800 rounded-lg transition-colors text-gray-400"
+                                            title="Search Messages"
+                                        >
+                                            <Search size={20} />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setShowUserSearch(true)}
+                                        className="p-2 hover:bg-gray-800 rounded-lg transition-colors text-blue-400"
+                                        title="Start New Chat"
+                                    >
+                                        <UserPlus size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </header>
+
+                        {/* Search Results Overlay */}
+                        {isSearchingMessages && (messageSearchQuery.trim() || isSearchingLocal) && (
+                            <div className="absolute top-[73px] left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-md border-b border-gray-800 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden max-h-[60vh] flex flex-col">
+                                <div className="p-3 border-b border-gray-800 flex justify-between items-center">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                                        {isSearchingLocal ? 'Searching...' : `Found ${messageSearchResults.length} matches`}
+                                    </span>
+                                </div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                                    {messageSearchResults.length === 0 && !isSearchingLocal ? (
+                                        <div className="p-8 text-center text-gray-500 text-xs italic">
+                                            No messages matching "{messageSearchQuery}"
+                                        </div>
+                                    ) : (
+                                        messageSearchResults.map((result) => {
+                                            const isMe = String(result.senderId) === selfId;
+                                            return (
+                                                <div
+                                                    key={result.id}
+                                                    className="p-3 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl cursor-pointer transition-all border border-gray-700/30 group"
+                                                    onClick={() => {
+                                                        // For now, just close search. Real implementation would scroll to message.
+                                                        setIsSearchingMessages(false);
+                                                        setMessageSearchQuery('');
+                                                        toast.success("Found message!");
+                                                    }}
+                                                >
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <span className={`text-[10px] font-black uppercase tracking-tighter ${isMe ? 'text-blue-400' : 'text-purple-400'}`}>
+                                                            {isMe ? 'You' : (allUsers.find(u => String(u.id) === String(result.senderId))?.fullName || 'Contact')}
+                                                        </span>
+                                                        <span className="text-[9px] text-gray-500 font-mono">
+                                                            {new Date(result.timestamp).toLocaleDateString()} {new Date(result.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed">
+                                                        {result.content}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {connectionStatus !== 'connected' && (
                             <div className="px-4 py-1 text-center text-[11px] bg-gray-800/70 text-gray-300 border-b border-gray-700">
