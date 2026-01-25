@@ -80,6 +80,12 @@ export const getPrivateMessages = async (req: Request, res: Response) => {
           voiceMessage: att.mediaType.startsWith('audio/') ? {
             duration: metadata.duration || 0,
             waveform: metadata.waveform || []
+          } : undefined,
+          videoMessage: att.mediaType.startsWith('video/') ? {
+            duration: metadata.duration || 0,
+            width: metadata.width || 0,
+            height: metadata.height || 0,
+            thumbnailPath: metadata.thumbnailPath || undefined
           } : undefined
         };
       }
@@ -146,6 +152,12 @@ export const getGroupMessages = async (req: Request, res: Response) => {
           voiceMessage: att.mediaType.startsWith('audio/') ? {
             duration: metadata.duration || 0,
             waveform: metadata.waveform || []
+          } : undefined,
+          videoMessage: att.mediaType.startsWith('video/') ? {
+            duration: metadata.duration || 0,
+            width: metadata.width || 0,
+            height: metadata.height || 0,
+            thumbnailPath: metadata.thumbnailPath || undefined
           } : undefined
         };
       }

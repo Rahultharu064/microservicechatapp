@@ -412,7 +412,13 @@ export default function Dashboard() {
             await sendMessage(activeChat, "", {
                 id: uploaded.id,
                 type: 'video/mp4',
-                filename: 'video_message.mp4'
+                filename: 'video_message.mp4',
+                metadata: JSON.stringify({
+                    duration: uploaded.videoMessage?.duration || 0,
+                    width: uploaded.videoMessage?.width || 0,
+                    height: uploaded.videoMessage?.height || 0,
+                    thumbnailPath: uploaded.videoMessage?.thumbnailPath || undefined
+                })
             });
 
             if (videoPreview) {

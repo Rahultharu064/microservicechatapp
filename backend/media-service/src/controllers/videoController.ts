@@ -32,7 +32,7 @@ export const uploadVideoMessage = async (
   }
 
   if (file.size > MAX_VIDEO_SIZE) {
-    await fs.unlink(file.path).catch(() => {});
+    await fs.unlink(file.path).catch(() => { });
     return res.status(400).json({ error: "Video file too large (max 50MB)" });
   }
 
@@ -101,17 +101,11 @@ export const uploadVideoMessage = async (
     );
 
     /* ---------- Cleanup ---------- */
-    await fs.unlink(file.path).catch(() => {});
+    await fs.unlink(file.path).catch(() => { });
 
     /* ---------- Response ---------- */
     return res.status(201).json({
-      media: {
-        id: media.id,
-        filename: media.filename,
-        mimeType: media.mimeType,
-        size: media.size,
-        createdAt: media.createdAt,
-      },
+      ...media,
       videoMessage: {
         id: videoMessage.id,
         duration: videoMessage.duration,
@@ -121,10 +115,15 @@ export const uploadVideoMessage = async (
       },
     });
   } catch (error: any) {
-    console.error("Video upload error:", error);
+    console.error("Video upload error details:", {
+      message: error.message,
+      stack: error.stack,
+      filePath: file?.path,
+      fileSize: file?.size
+    });
 
     if (file?.path) {
-      await fs.unlink(file.path).catch(() => {});
+      await fs.unlink(file.path).catch(() => { });
     }
 
     return res.status(500).json({

@@ -1,14 +1,16 @@
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 
-// Set FFmpeg path
+// Set FFmpeg and FFprobe paths
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
-const VIDEO_DIR = "storage/video";
-const THUMBNAIL_DIR = "storage/thumbnails";
+const VIDEO_DIR = path.resolve("storage/video");
+const THUMBNAIL_DIR = path.resolve("storage/thumbnails");
 
 interface VideoMetadata {
     duration: number;
@@ -20,9 +22,26 @@ interface VideoMetadata {
 }
 
 export const getVideoMetadata = async (filePath: string): Promise<VideoMetadata> => {
+    const absolutePath = path.resolve(filePath);
+    console.log(`[videoService] Getting metadata for: ${absolutePath}`);
+
+    try {
+        const stats = await fs.stat(absolutePath);
+        console.log(`[videoService] File size: ${stats.size} bytes`);
+        if (stats.size === 0) {
+            throw new Error("File is empty");
+        }
+    } catch (err: any) {
+        console.error(`[videoService] fs.stat error: ${err.message}`);
+        throw err;
+    }
+
     return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) return reject(err);
+        ffmpeg.ffprobe(absolutePath, (err, metadata) => {
+            if (err) {
+                console.error("[videoService] ffprobe error:", err);
+                return reject(err);
+            }
 
             const videoStream = metadata.streams.find((s) => s.codec_type === "video");
             if (!videoStream) return reject(new Error("No video stream found"));

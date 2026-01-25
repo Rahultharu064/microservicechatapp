@@ -61,7 +61,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const newSocket = io("http://localhost:5000", {
                 auth: { token },
                 path: "/socket.io",
-                transports: ["websocket"],
+                transports: ["polling", "websocket"],
                 reconnection: true,
                 reconnectionAttempts: Infinity,
                 reconnectionDelay: 1000,

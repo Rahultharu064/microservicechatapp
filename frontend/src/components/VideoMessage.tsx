@@ -16,8 +16,7 @@ const VideoMessage: React.FC<VideoMessageProps> = ({
     messageId,
     videoMessageId,
     duration,
-    width,
-    height,
+    
     thumbnailPath,
     onReaction
 }) => {
@@ -34,7 +33,7 @@ const VideoMessage: React.FC<VideoMessageProps> = ({
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const controlsTimeoutRef = useRef<number | null>(null);
 
     const commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '😡'];
     const speedOptions = [0.5, 1, 1.5, 2];
@@ -275,7 +274,9 @@ const VideoMessage: React.FC<VideoMessageProps> = ({
 
                             <div className="volume-control">
                                 <span>🔊</span>
+                                <label htmlFor="volume">Volume</label>
                                 <input
+                                    id="volume"
                                     type="range"
                                     min="0"
                                     max="1"

@@ -42,14 +42,16 @@ app.use(createServiceProxy(config.services.chat, SERVICE_ROUTES.REACTIONS.rewrit
 app.use(createServiceProxy(config.services.search, SERVICE_ROUTES.SEARCH.rewrite, SERVICE_ROUTES.SEARCH.path));
 app.use(createServiceProxy(config.services.admin, SERVICE_ROUTES.ADMIN.rewrite, SERVICE_ROUTES.ADMIN.path));
 
-// Socket.IO Proxy - Ensure path is preserved by using pathFilter (v3 way)
+// Socket.IO Proxy - Exported for use in server.ts
 // This handles polling requests (HTTP)
-app.use(createProxyMiddleware({
+export const socketProxy = createProxyMiddleware({
     target: config.services.chat,
     ws: true,
     changeOrigin: true,
     pathFilter: '/socket.io'
-}));
+});
+
+app.use(socketProxy);
 
 // Health Check
 app.get('/', (req, res) => {

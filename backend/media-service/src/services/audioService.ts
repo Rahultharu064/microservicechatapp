@@ -1,6 +1,11 @@
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import fs from "fs/promises";
 import path from "path";
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 const VOICE_DIR = "storage/voice";
 
@@ -11,8 +16,9 @@ interface AudioMetadata {
 }
 
 export const getAudioMetadata = async (filePath: string): Promise<AudioMetadata> => {
+    const absolutePath = path.resolve(filePath);
     return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
+        ffmpeg.ffprobe(absolutePath, (err, metadata) => {
             if (err) return reject(err);
 
             const audioStream = metadata.streams.find((s) => s.codec_type === "audio");
@@ -63,7 +69,7 @@ export const generateWaveform = async (
                 const rmsMatches = stderr.match(/lavfi\.astats\.Overall\.RMS_level=(-?\d+\.\d+)/g);
                 if (rmsMatches) {
                     rmsMatches.forEach(match => {
-                        const rms = parseFloat(match.split('=')[1]);
+                        const rms = parseFloat(match?.split("=")[1] ?? "0");
                         // Convert dB to amplitude (0-1 range)
                         const amplitude = Math.pow(10, rms / 20);
                         waveform.push(Math.min(1, amplitude));
@@ -109,11 +115,17 @@ const interpolateWaveform = (data: number[], targetSamples: number): number[] =>
         const lowerIndex = Math.floor(index);
         const upperIndex = Math.min(Math.ceil(index), data.length - 1);
         const weight = index - lowerIndex;
+        const lowerValue = data[lowerIndex];
+        const upperValue = data[upperIndex];
+
+        if (lowerValue === undefined || upperValue === undefined) {
+            return []; // or throw error
+        }
 
         if (lowerIndex === upperIndex) {
-            result.push(data[lowerIndex]);
+            result.push(lowerValue);
         } else {
-            result.push(data[lowerIndex] * (1 - weight) + data[upperIndex] * weight);
+            result.push(lowerValue * (1 - weight) + upperValue * weight);
         }
     }
 
@@ -140,3 +152,6 @@ export const generateSimpleWaveform = async (
         return Math.min(1, envelope * randomness);
     });
 };
+
+
+

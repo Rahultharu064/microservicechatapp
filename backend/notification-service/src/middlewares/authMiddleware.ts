@@ -5,6 +5,7 @@ import logger from "../../../shared/src/logger/logger";
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        logger.warn(`Unauthorized attempt to notification service: missing or invalid header`);
         return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -14,7 +15,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
         (req as any).user = decoded;
         next();
     } catch (error) {
-        logger.error("Authentication failed", error);
+        logger.error(`Authentication failed in notification service for path ${req.path}`, error);
         res.status(401).json({ error: "Invalid token" });
     }
 };

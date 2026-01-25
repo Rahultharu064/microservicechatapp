@@ -1,10 +1,10 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import app from "./app";
 import { createConnectRabbitMQ } from "../../shared/src/rabbitmq/connection";
 import { startNotificationConsumers } from "./consumers/notificationConsumer";
 import logger from "../../shared/src/logger/logger";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const PORT = process.env.PORT || 5005;
 
