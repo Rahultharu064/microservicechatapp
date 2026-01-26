@@ -5,7 +5,7 @@ import { REDIS_KEYS } from "../../../shared/src/constants/redisKeys.ts";
 import { QUEUES } from "../../../shared/src/constants/queues.ts";
 
 const OTP_EXPIRY = Number(process.env.OTP_EXPIRY_SECONDS) || 300;
-const MAX_FAILS = Number(process.env.MAX_OTP_ATTEMPTS) || 5;
+const MAX_FAILS = Number(process.env.MAX_OTP_ATTEMPTS) || 10;
 const LOCK_TIME = 900;
 
 export const generateOTP = async (email: string) => {

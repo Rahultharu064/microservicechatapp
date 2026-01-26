@@ -1,4 +1,4 @@
-import { fcmAdmin } from "../config/firebase.ts";
+import { fcmAdmin } from "../config/firebase";
 import logger from "../../../shared/src/logger/logger";
 
 export class FcmProvider {
